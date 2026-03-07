@@ -2,6 +2,7 @@ mod db;
 mod crud;
 
 use db::{get_db_url, init_db, get_setting as db_get_setting, set_setting as db_set_setting};
+use tauri_plugin_log::{Target, TargetKind};
 use crud::images::{get_all_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, get_image_metadata};
 use crud::notifications::{get_all_notifications, add_notification, mark_notification_read, delete_notification, mark_all_notifications_read, clear_all_notifications};
 use crud::selections::{get_selections, set_selections, add_selection, remove_selection, clear_selections};
@@ -48,6 +49,17 @@ async fn set_setting(key: String, value: String, state: State<'_, DbState>) -> R
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .targets([
+                    Target::new(TargetKind::Stdout),
+                    Target::new(TargetKind::LogDir { file_name: Some("app".to_string()) }),
+                    Target::new(TargetKind::Webview),
+                ])
+                .level(log::LevelFilter::Info)
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .build(),
+        )
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -61,10 +73,10 @@ pub fn run() {
                     Ok((pool, path)) => {
                         handle.manage(DbState(pool));
                         let _ = DB_INITIALIZED.set(());
-                        println!("[DB] Initialized at: {:?}", path);
+                        log::info!("[DB] Initialized at: {:?}", path);
                     }
                     Err(e) => {
-                        eprintln!("[DB] Failed to initialize: {}", e);
+                        log::error!("[DB] Failed to initialize: {}", e);
                     }
                 }
             });

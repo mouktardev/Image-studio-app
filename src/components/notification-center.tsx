@@ -4,6 +4,7 @@ import { Bell, Check, CircleCheck, Info, X, XCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
+import { error as logError } from '@/lib/logger'
 import {
   Notification,
   getAllNotifications,
@@ -54,7 +55,7 @@ function NotificationItem({
     >
       <Icon className={cn('mt-0.5 size-5 shrink-0', iconColor)} />
       <div className="min-w-0 flex-1">
-        <p className="text-sm break-words">{notification.message}</p>
+        <p className="text-sm wrap-break-word">{notification.message}</p>
         <p className="text-muted-foreground mt-1 text-xs">
           {formatDistanceToNow(new Date(notification.timestamp), {
             addSuffix: true,
@@ -99,8 +100,8 @@ export function NotificationCenter({ onRefresh }: NotificationCenterProps) {
     try {
       const data = await getAllNotifications()
       setNotifications(data)
-    } catch (error) {
-      console.error('Failed to load notifications:', error)
+    } catch (err) {
+      logError(`Failed to load notifications: ${err}`)
     } finally {
       setIsLoading(false)
     }
@@ -153,7 +154,7 @@ export function NotificationCenter({ onRefresh }: NotificationCenterProps) {
           )}
         </div>
       </CardHeader>
-      <CardContent className="max-h-[400px] overflow-auto p-0">
+      <CardContent className="max-h-100 overflow-auto p-0">
         {isLoading ? (
           <div className="flex items-center justify-center p-8">
             <div className="border-t-primary h-6 w-6 animate-spin rounded-full border-4 border-gray-300" />

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -49,19 +50,18 @@ export function ImageTools({
   return (
     <div className="flex items-center gap-4 border-b p-4">
       <div className="flex items-center gap-2">
-        <input
-          type="checkbox"
+        <Checkbox
           id="select-all"
-          checked={selectedIds.length > 0 && selectedIds.length === images.length}
-          ref={(el) => {
-            if (el) {
-              el.indeterminate = selectedIds.length > 0 && selectedIds.length < images.length
-            }
-          }}
-          onChange={handleSelectAll}
-          className="h-4 w-4"
+          checked={
+            selectedIds.length === images.length
+              ? true
+              : selectedIds.length > 0
+                ? 'indeterminate'
+                : false
+          }
+          onCheckedChange={handleSelectAll}
         />
-        <label htmlFor="select-all" className="text-sm">
+        <label htmlFor="select-all" className="cursor-pointer text-sm">
           {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select all'}
         </label>
       </div>

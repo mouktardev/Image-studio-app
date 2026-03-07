@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/context-menu'
 import { formatBytes } from '@/lib/utils'
 import { type Image, revealInExplorer, openFile, deleteImage } from '@/lib/tauri'
+import { error as logError } from '@/lib/logger'
 import { Check, ExternalLink, FolderSearch, Trash2, Upload } from 'lucide-react'
 
 interface ImageGridProps {
@@ -143,16 +144,16 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
   const handleOpen = async () => {
     try {
       await openFile(image.filepath)
-    } catch (error) {
-      console.error('Failed to open file:', error)
+    } catch (err) {
+      logError(`Failed to open file: ${err}`)
     }
   }
 
   const handleReveal = async () => {
     try {
       await revealInExplorer(image.filepath)
-    } catch (error) {
-      console.error('Failed to reveal file:', error)
+    } catch (err) {
+      logError(`Failed to reveal file: ${err}`)
     }
   }
 
@@ -160,8 +161,8 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
     try {
       await deleteImage(image.id)
       onDelete(image.id)
-    } catch (error) {
-      console.error('Failed to delete image:', error)
+    } catch (err) {
+      logError(`Failed to delete image: ${err}`)
     }
   }
 

@@ -1,5 +1,3 @@
-'use client'
-
 import { useState } from 'react'
 import { createFileRoute, Outlet } from '@tanstack/react-router'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
@@ -8,6 +6,7 @@ import { Bell } from 'lucide-react'
 import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { NotificationCenter, useNotificationCount } from '@/components/notification-center'
+import { LogPanel } from '@/components/log-panel'
 
 export const Route = createFileRoute('/_app')({
   component: RouteComponent,
@@ -44,11 +43,13 @@ function NotificationBell() {
 }
 
 function RouteComponent() {
+  const [logsOpen, setLogsOpen] = useState(false)
+
   return (
     <SidebarProvider defaultOpen style={{ '--sidebar-width': '14rem' } as React.CSSProperties}>
-      <AppSidebar />
-      <SidebarInset>
-        <header className="bg-muted/40 flex h-10 items-center justify-between gap-4 border-b px-6">
+      <AppSidebar onToggleLogs={() => setLogsOpen((v) => !v)} logsOpen={logsOpen} />
+      <SidebarInset className="flex flex-col">
+        <header className="bg-muted/40 flex h-10 shrink-0 items-center justify-between gap-4 border-b px-6">
           <div className="flex items-center gap-4">
             <SidebarTrigger />
           </div>
@@ -56,9 +57,10 @@ function RouteComponent() {
             <NotificationBell />
           </div>
         </header>
-        <main>
+        <main className="flex flex-1 flex-col overflow-hidden">
           <Outlet />
         </main>
+        {logsOpen && <LogPanel onClose={() => setLogsOpen(false)} />}
       </SidebarInset>
     </SidebarProvider>
   )

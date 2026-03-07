@@ -28,4 +28,6 @@ anyhow = "1.0"
 image = "0.25"
 imagesize = "0.13"
 dunce = "1.0"
+tauri-plugin-log = "2.8.0"
+log = "0.4.29"
 

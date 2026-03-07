@@ -1,5 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { ImageTools } from '@/components/image-tools'
 import { ImageGrid } from '@/components/image-grid'
@@ -18,28 +18,35 @@ import {
   removeSelection,
   clearSelections,
 } from '@/lib/notifications'
+import { error as logError } from '@/lib/logger'
 
 export const Route = createFileRoute('/_app/')({
   loader: async () => {
     const [images, selectedIds] = await Promise.all([getAllImages(), getSelections()])
     return { images, selectedIds }
   },
+  staleTime: 0,
   component: IndexPage,
 })
 
 function IndexPage() {
-  const { images: initialImages, selectedIds: initialSelectedIds } = Route.useLoaderData()
+  const loaderData = Route.useLoaderData()
 
-  const [images, setImages] = useState<Image[]>(initialImages)
-  const [selectedIds, setSelectedIds] = useState<number[]>(initialSelectedIds)
+  const [images, setImages] = useState<Image[]>(loaderData.images)
+  const [selectedIds, setSelectedIds] = useState<number[]>(loaderData.selectedIds)
   const [isImporting, setIsImporting] = useState(false)
+
+  useEffect(() => {
+    setImages(loaderData.images)
+    setSelectedIds(loaderData.selectedIds)
+  }, [loaderData])
 
   const handleSelectionChange = useCallback(async (ids: number[]) => {
     setSelectedIds(ids)
     try {
       await setSelections(ids)
-    } catch (error) {
-      console.error('Failed to sync selections:', error)
+    } catch (err) {
+      logError(`Failed to sync selections: ${err}`)
     }
   }, [])
 
@@ -52,8 +59,8 @@ function IndexPage() {
       await importFiles(files)
       const updated = await getAllImages()
       setImages(updated)
-    } catch (error) {
-      console.error('Failed to import images:', error)
+    } catch (err) {
+      logError(`Failed to import images: ${err}`)
     } finally {
       setIsImporting(false)
     }
@@ -67,8 +74,8 @@ function IndexPage() {
       await importFiles(files)
       const updated = await getAllImages()
       setImages(updated)
-    } catch (error) {
-      console.error('Failed to import dropped files:', error)
+    } catch (err) {
+      logError(`Failed to import dropped files: ${err}`)
     } finally {
       setIsImporting(false)
     }
@@ -110,8 +117,8 @@ function IndexPage() {
         message: `Deleted ${count} image${count > 1 ? 's' : ''}`,
         status: 'success',
       })
-    } catch (error) {
-      console.error('Failed to delete images:', error)
+    } catch (err) {
+      logError(`Failed to delete images: ${err}`)
     }
   }, [])
 

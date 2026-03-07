@@ -7,7 +7,9 @@ import {
   setSetting,
   revealInExplorer,
   selectFolder,
+  getDbPath,
 } from '@/lib/tauri'
+import { error as logError } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -21,6 +23,7 @@ export const Route = createFileRoute('/_app/settings')({
 function SettingsPage() {
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
   const [outputPath, setOutputPath] = useState<string>('')
+  const [dbPath, setDbPath] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [isInitializing, setIsInitializing] = useState(false)
   const [isChangingFolder, setIsChangingFolder] = useState(false)
@@ -40,9 +43,13 @@ function SettingsPage() {
         if (path) {
           setOutputPath(path)
         }
+        const db = await getDbPath()
+        if (db) {
+          setDbPath(db)
+        }
       }
-    } catch (error) {
-      console.error('Failed to load settings:', error)
+    } catch (err) {
+      logError(`Failed to load settings: ${err}`)
     } finally {
       setIsLoading(false)
     }
@@ -54,8 +61,8 @@ function SettingsPage() {
       await initDatabase()
       setIsInitialized(true)
       await loadSettings()
-    } catch (error) {
-      console.error('Failed to initialize database:', error)
+    } catch (err) {
+      logError(`Failed to initialize database: ${err}`)
     } finally {
       setIsInitializing(false)
     }
@@ -65,8 +72,17 @@ function SettingsPage() {
     if (!outputPath) return
     try {
       await revealInExplorer(outputPath)
-    } catch (error) {
-      console.error('Failed to reveal folder:', error)
+    } catch (err) {
+      logError(`Failed to reveal folder: ${err}`)
+    }
+  }
+
+  async function handleRevealDbFolder() {
+    if (!dbPath) return
+    try {
+      await revealInExplorer(dbPath)
+    } catch (err) {
+      logError(`Failed to reveal database folder: ${err}`)
     }
   }
 
@@ -78,8 +94,8 @@ function SettingsPage() {
         await setSetting('output', selected)
         setOutputPath(selected)
       }
-    } catch (error) {
-      console.error('Failed to change folder:', error)
+    } catch (err) {
+      logError(`Failed to change folder: ${err}`)
     } finally {
       setIsChangingFolder(false)
     }
@@ -126,7 +142,15 @@ function SettingsPage() {
             </Button>
           )}
           {isInitialized && (
-            <p className="text-muted-foreground text-sm">Database is ready to use.</p>
+            <div className="space-y-2">
+              <p className="text-muted-foreground text-sm">Database is ready to use.</p>
+              {dbPath && (
+                <Button variant="outline" size="sm" onClick={handleRevealDbFolder}>
+                  <EyeIcon className="mr-2 h-4 w-4" />
+                  Reveal Database Folder
+                </Button>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>

@@ -11,9 +11,14 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { AppWindowIcon, ImageDown, SettingsIcon } from 'lucide-react'
+import { AppWindowIcon, ImageDown, SettingsIcon, TerminalIcon } from 'lucide-react'
 
-export function AppSidebar() {
+interface AppSidebarProps {
+  onToggleLogs: () => void
+  logsOpen: boolean
+}
+
+export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
   const location = useLocation()
   const isHomeActive = location.pathname === '/'
   const isSettingsActive = location.pathname === '/settings'
@@ -67,6 +72,17 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="sm"
+              onClick={onToggleLogs}
+              isActive={logsOpen}
+              tooltip="Toggle log panel"
+            >
+              <TerminalIcon className="h-4 w-4 shrink-0" />
+              <span className="text-xs">Logs</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton size="sm" asChild>
               <div className="text-muted-foreground px-2 py-1 text-[0.60rem]">v0.1.0</div>
