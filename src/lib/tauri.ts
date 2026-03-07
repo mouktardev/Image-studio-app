@@ -21,6 +21,13 @@ export interface AddImageData {
   height: number | null
 }
 
+export interface ImageMetadata {
+  width: number
+  height: number
+  size: number
+  mimetype: string
+}
+
 export async function initDatabase(): Promise<string> {
   return invoke<string>('init_database')
 }
@@ -87,4 +94,18 @@ export async function deleteImage(id: number): Promise<void> {
 
 export async function deleteImagesByIds(ids: number[]): Promise<void> {
   return invoke<void>('delete_images_by_ids', { ids })
+}
+
+export async function getImageMetadata(filepath: string): Promise<ImageMetadata> {
+  return invoke<ImageMetadata>('get_image_metadata', { filepath })
+}
+
+export interface ImportResult {
+  imported: number
+  duplicates: number
+  failed: number
+}
+
+export async function importImagesBulk(filepaths: string[]): Promise<ImportResult> {
+  return invoke<ImportResult>('import_images_bulk', { filepaths })
 }

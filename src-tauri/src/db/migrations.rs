@@ -6,6 +6,8 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_images_table(pool).await?;
     create_settings_table(pool).await?;
     create_swatches_table(pool).await?;
+    create_notifications_table(pool).await?;
+    create_selections_table(pool).await?;
     insert_default_settings(pool, app).await?;
     insert_default_swatches(pool).await?;
 
@@ -29,6 +31,11 @@ async fn create_images_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create 'images' table")?;
+
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_images_filepath ON images(filepath)")
+        .execute(pool)
+        .await
+        .context("Failed to create unique index on filepath")?;
 
     Ok(())
 }
@@ -92,6 +99,44 @@ async fn insert_default_swatches(pool: &SqlitePool) -> Result<()> {
             .await
             .with_context(|| format!("Failed to insert default swatch '{}'", color))?;
     }
+
+    Ok(())
+}
+
+async fn create_notifications_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            message TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'info',
+            timestamp INTEGER NOT NULL,
+            read INTEGER NOT NULL DEFAULT 0,
+            action_label TEXT,
+            action_payload TEXT
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'notifications' table")?;
+
+    Ok(())
+}
+
+async fn create_selections_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS selections (
+            image_id INTEGER PRIMARY KEY NOT NULL,
+            selected_at INTEGER NOT NULL,
+            FOREIGN KEY (image_id) REFERENCES images(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'selections' table")?;
 
     Ok(())
 }

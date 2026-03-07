@@ -1,34 +1,47 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
+import { Loader2 } from 'lucide-react'
 import { ImageTools } from '@/components/image-tools'
 import { ImageGrid } from '@/components/image-grid'
-import { getAllImages, addImage, deleteImagesByIds, selectFiles, type Image } from '@/lib/tauri'
+import {
+  getAllImages,
+  deleteImagesByIds,
+  selectFiles,
+  importImagesBulk,
+  type Image,
+} from '@/lib/tauri'
+import {
+  addNotification,
+  toast,
+  getSelections,
+  setSelections,
+  removeSelection,
+  clearSelections,
+} from '@/lib/notifications'
 
 export const Route = createFileRoute('/_app/')({
+  loader: async () => {
+    const [images, selectedIds] = await Promise.all([getAllImages(), getSelections()])
+    return { images, selectedIds }
+  },
   component: IndexPage,
 })
 
 function IndexPage() {
-  const [images, setImages] = useState<Image[]>([])
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { images: initialImages, selectedIds: initialSelectedIds } = Route.useLoaderData()
+
+  const [images, setImages] = useState<Image[]>(initialImages)
+  const [selectedIds, setSelectedIds] = useState<number[]>(initialSelectedIds)
   const [isImporting, setIsImporting] = useState(false)
 
-  useEffect(() => {
-    loadImages()
-  }, [])
-
-  async function loadImages() {
-    setIsLoading(true)
+  const handleSelectionChange = useCallback(async (ids: number[]) => {
+    setSelectedIds(ids)
     try {
-      const data = await getAllImages()
-      setImages(data)
+      await setSelections(ids)
     } catch (error) {
-      console.error('Failed to load images:', error)
-    } finally {
-      setIsLoading(false)
+      console.error('Failed to sync selections:', error)
     }
-  }
+  }, [])
 
   const handleImport = useCallback(async () => {
     try {
@@ -36,18 +49,9 @@ function IndexPage() {
       if (!files || files.length === 0) return
 
       setIsImporting(true)
-      for (const filepath of files) {
-        const filename = filepath.split(/[\\/]/).pop() || 'unknown'
-        await addImage({
-          filename,
-          filepath,
-          mimetype: null,
-          size: null,
-          width: null,
-          height: null,
-        })
-      }
-      await loadImages()
+      await importFiles(files)
+      const updated = await getAllImages()
+      setImages(updated)
     } catch (error) {
       console.error('Failed to import images:', error)
     } finally {
@@ -55,35 +59,90 @@ function IndexPage() {
     }
   }, [])
 
+  const handleDrop = useCallback(async (files: string[]) => {
+    if (files.length === 0) return
+
+    setIsImporting(true)
+    try {
+      await importFiles(files)
+      const updated = await getAllImages()
+      setImages(updated)
+    } catch (error) {
+      console.error('Failed to import dropped files:', error)
+    } finally {
+      setIsImporting(false)
+    }
+  }, [])
+
+  async function importFiles(filepaths: string[]) {
+    const result = await importImagesBulk(filepaths)
+    const { imported, duplicates, failed } = result
+
+    if (imported > 0) {
+      toast(`Imported ${imported} image${imported > 1 ? 's' : ''}`, 'success')
+    }
+
+    if (duplicates > 0) {
+      toast(`${duplicates} file${duplicates > 1 ? 's' : ''} already exists, skipped`, 'info')
+    }
+
+    if (filepaths.length > 1) {
+      const parts: string[] = []
+      if (imported > 0) parts.push(`${imported} imported`)
+      if (duplicates > 0) parts.push(`${duplicates} already exists`)
+      if (failed > 0) parts.push(`${failed} failed`)
+
+      await addNotification({
+        message: parts.join(', '),
+        status: failed > 0 ? 'error' : 'success',
+      })
+    }
+  }
+
   const handleDeleteSelected = useCallback(async (ids: number[]) => {
     try {
+      const count = ids.length
       await deleteImagesByIds(ids)
       setSelectedIds([])
-      await loadImages()
+      await clearSelections()
+      setImages((prev) => prev.filter((img) => !ids.includes(img.id)))
+      await addNotification({
+        message: `Deleted ${count} image${count > 1 ? 's' : ''}`,
+        status: 'success',
+      })
     } catch (error) {
       console.error('Failed to delete images:', error)
     }
   }, [])
 
-  const handleDeleteSingle = useCallback(async (id: number) => {
-    setImages((prev) => prev.filter((img) => img.id !== id))
-    setSelectedIds((prev) => prev.filter((i) => i !== id))
-  }, [])
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <div className="border-t-primary h-8 w-8 animate-spin rounded-full border-4 border-gray-300" />
-      </div>
-    )
-  }
+  const handleDeleteSingle = useCallback(
+    async (id: number) => {
+      setImages((prev) => prev.filter((img) => img.id !== id))
+      const newIds = selectedIds.filter((i) => i !== id)
+      setSelectedIds(newIds)
+      await removeSelection(id)
+      await addNotification({
+        message: 'Deleted 1 image',
+        status: 'success',
+      })
+    },
+    [selectedIds]
+  )
 
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="relative flex flex-1 flex-col">
+      {isImporting && (
+        <div className="bg-background/80 absolute inset-0 z-50 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="text-primary h-8 w-8 animate-spin" />
+            <p className="text-muted-foreground text-sm">Importing...</p>
+          </div>
+        </div>
+      )}
       <ImageTools
         images={images}
         selectedIds={selectedIds}
-        onSelectionChange={setSelectedIds}
+        onSelectionChange={handleSelectionChange}
         onImport={handleImport}
         onDeleteSelected={handleDeleteSelected}
         isImporting={isImporting}
@@ -91,9 +150,10 @@ function IndexPage() {
       <ImageGrid
         images={images}
         selectedIds={selectedIds}
-        onSelectionChange={setSelectedIds}
+        onSelectionChange={handleSelectionChange}
         onDelete={handleDeleteSingle}
         onImport={handleImport}
+        onDrop={handleDrop}
       />
     </div>
   )

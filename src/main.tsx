@@ -12,6 +12,7 @@ import {
   useCreateQueries,
 } from '@/schema/tinybase-schema'
 import { createQueries, createStore } from 'tinybase/with-schemas'
+import { Toaster } from '@/components/ui/sonner'
 // Create a new router instance
 const router = createRouter({ routeTree })
 
@@ -32,6 +33,7 @@ export function App() {
     <ThemeProvider defaultTheme="dark" storageKey="theme">
       <TinyBaseProvider store={store} queries={queries}>
         <RouterProvider router={router} />
+        <Toaster />
       </TinyBaseProvider>
     </ThemeProvider>
   )

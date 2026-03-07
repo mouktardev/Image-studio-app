@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -17,6 +18,7 @@ interface ImageGridProps {
   onSelectionChange: (ids: number[]) => void
   onDelete: (id: number) => void
   onImport: () => void
+  onDrop: (files: string[]) => void
 }
 
 export function ImageGrid({
@@ -25,7 +27,34 @@ export function ImageGrid({
   onSelectionChange,
   onDelete,
   onImport,
+  onDrop,
 }: ImageGridProps) {
+  const [isDragging, setIsDragging] = useState(false)
+
+  useEffect(() => {
+    const unlistenDragEnter = listen<{ paths: string[] }>('tauri://drag-enter', () => {
+      setIsDragging(true)
+    })
+
+    const unlistenDragLeave = listen<{ paths: string[] }>('tauri://drag-leave', () => {
+      setIsDragging(false)
+    })
+
+    const unlistenDrop = listen<{ paths: string[] }>('tauri://drag-drop', (event) => {
+      setIsDragging(false)
+      const files = event.payload.paths
+      if (files && files.length > 0) {
+        onDrop(files)
+      }
+    })
+
+    return () => {
+      unlistenDragEnter.then((fn) => fn())
+      unlistenDragLeave.then((fn) => fn())
+      unlistenDrop.then((fn) => fn())
+    }
+  }, [onDrop])
+
   const handleSelect = useCallback(
     (id: number, event: React.MouseEvent | React.KeyboardEvent) => {
       if (event.shiftKey && selectedIds.length > 0) {
@@ -43,7 +72,11 @@ export function ImageGrid({
           onSelectionChange([...selectedIds, id])
         }
       } else {
-        onSelectionChange([id])
+        if (selectedIds.includes(id)) {
+          onSelectionChange(selectedIds.filter((i) => i !== id))
+        } else {
+          onSelectionChange([...selectedIds, id])
+        }
       }
     },
     [images, selectedIds, onSelectionChange]
@@ -58,33 +91,40 @@ export function ImageGrid({
     [handleSelect]
   )
 
-  if (images.length === 0) {
-    return (
-      <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-4 p-8">
-        <Upload className="h-12 w-12" />
-        <p className="text-lg">No images found</p>
-        <p className="text-sm">Import images or drag and drop to get started</p>
-        <button onClick={onImport} className="text-primary hover:underline">
-          Import Images
-        </button>
-      </div>
-    )
-  }
-
   return (
-    <div className="flex-1 overflow-auto p-4">
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-        {images.map((image) => (
-          <ImageGridItem
-            key={image.id}
-            image={image}
-            isSelected={selectedIds.includes(image.id)}
-            onSelect={handleSelect}
-            onKeyDown={handleKeyDown}
-            onDelete={onDelete}
-          />
-        ))}
-      </div>
+    <div className={`flex-1 overflow-auto p-4 ${isDragging ? 'bg-primary/5' : ''}`}>
+      {images.length === 0 && !isDragging ? (
+        <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-4 p-8">
+          <Upload className="h-12 w-12" />
+          <p className="text-lg">No images found</p>
+          <p className="text-sm">Import images or drag and drop to get started</p>
+          <button onClick={onImport} className="text-primary hover:underline">
+            Import Images
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {images.map((image) => (
+            <ImageGridItem
+              key={image.id}
+              image={image}
+              isSelected={selectedIds.includes(image.id)}
+              onSelect={handleSelect}
+              onKeyDown={handleKeyDown}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      )}
+
+      {isDragging && (
+        <div className="bg-primary/10 pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+          <div className="border-primary bg-background rounded-lg border-2 border-dashed p-8 text-center">
+            <Upload className="text-primary mx-auto h-12 w-12" />
+            <p className="mt-4 text-lg font-semibold">Drop images here</p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -142,7 +182,7 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
           onClick={(e) => onSelect(image.id, e)}
           onKeyDown={(e) => onKeyDown(image.id, e)}
         >
-          <div className="relative aspect-[4/3] w-full overflow-hidden">
+          <div className="relative aspect-4/3 w-full overflow-hidden">
             {!imageError ? (
               <img
                 src={convertFileSrc(image.filepath)}
@@ -164,7 +204,7 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
               )}
             </div>
 
-            <div className="absolute bottom-0 left-0 w-full bg-gradient-to-t from-black/70 to-transparent px-3 py-2">
+            <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-3 py-2">
               <p className="truncate text-sm font-semibold text-white">{image.filename}</p>
               <p className="text-xs text-white/80">
                 {image.size ? formatBytes(image.size) : 'Unknown size'}
