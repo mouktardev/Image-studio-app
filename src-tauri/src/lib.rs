@@ -6,6 +6,7 @@ use tauri_plugin_log::{Target, TargetKind};
 use crud::images::{get_all_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, get_image_metadata};
 use crud::notifications::{get_all_notifications, add_notification, mark_notification_read, delete_notification, mark_all_notifications_read, clear_all_notifications};
 use crud::selections::{get_selections, set_selections, add_selection, remove_selection, clear_selections};
+use crud::compression::compress_images_by_ids;
 use sqlx::SqlitePool;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, State};
@@ -57,6 +58,7 @@ pub fn run() {
                     Target::new(TargetKind::Webview),
                 ])
                 .level(log::LevelFilter::Info)
+                .level_for("tao", log::LevelFilter::Error)
                 .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                 .build(),
         )
@@ -104,7 +106,8 @@ pub fn run() {
             set_selections,
             add_selection,
             remove_selection,
-            clear_selections
+            clear_selections,
+            compress_images_by_ids
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

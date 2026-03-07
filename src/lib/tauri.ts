@@ -10,6 +10,8 @@ export interface Image {
   size: number | null
   width: number | null
   height: number | null
+  compressed_filepath?: string | null
+  compressed_size?: number | null
 }
 
 export interface AddImageData {
@@ -108,4 +110,8 @@ export interface ImportResult {
 
 export async function importImagesBulk(filepaths: string[]): Promise<ImportResult> {
   return invoke<ImportResult>('import_images_bulk', { filepaths })
+}
+
+export async function compressImagesByIds(ids: number[], quality: number): Promise<number> {
+  return invoke<number>('compress_images_by_ids', { ids, quality })
 }

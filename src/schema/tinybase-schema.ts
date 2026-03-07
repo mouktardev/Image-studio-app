@@ -5,6 +5,10 @@ export const tablesSchema = {
   clients: {
     name: { type: 'string' },
   },
+  compressions: {
+    progress: { type: 'number' },
+    message: { type: 'string' },
+  },
 } as const
 
 export const valuesSchema = {

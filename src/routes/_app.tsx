@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { createFileRoute, Outlet, useRouter } from '@tanstack/react-router'
+import { listen } from '@tauri-apps/api/event'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Bell } from 'lucide-react'
@@ -7,10 +8,17 @@ import { AppSidebar } from '@/components/app-sidebar'
 import { Button } from '@/components/ui/button'
 import { NotificationCenter, useNotificationCount } from '@/components/notification-center'
 import { LogPanel } from '@/components/log-panel'
+import { useStore } from '@/schema/tinybase-schema'
 
 export const Route = createFileRoute('/_app')({
   component: RouteComponent,
 })
+
+interface CompressionProgress {
+  id: number
+  progress: number
+  message: string
+}
 
 function NotificationBell() {
   const { count, refresh } = useNotificationCount()
@@ -42,11 +50,41 @@ function NotificationBell() {
   )
 }
 
+function CompressionListener() {
+  const store = useStore()
+  const router = useRouter()
+
+  useEffect(() => {
+    if (!store) return
+
+    const unlistenProgress = listen<CompressionProgress>('compression-progress', (event) => {
+      const { id, progress, message } = event.payload
+      if (progress === 100 || progress === 0) {
+        store.delRow('compressions', id.toString())
+      } else {
+        store.setRow('compressions', id.toString(), { progress, message })
+      }
+    })
+
+    const unlistenUpdated = listen('images-updated', () => {
+      router.invalidate()
+    })
+
+    return () => {
+      unlistenProgress.then((fn) => fn())
+      unlistenUpdated.then((fn) => fn())
+    }
+  }, [store, router])
+
+  return null
+}
+
 function RouteComponent() {
   const [logsOpen, setLogsOpen] = useState(false)
 
   return (
     <SidebarProvider defaultOpen style={{ '--sidebar-width': '14rem' } as React.CSSProperties}>
+      <CompressionListener />
       <AppSidebar onToggleLogs={() => setLogsOpen((v) => !v)} logsOpen={logsOpen} />
       <SidebarInset className="flex flex-col">
         <header className="bg-muted/40 flex h-10 shrink-0 items-center justify-between gap-4 border-b px-6">

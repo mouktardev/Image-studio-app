@@ -30,4 +30,8 @@ imagesize = "0.13"
 dunce = "1.0"
 tauri-plugin-log = "2.8.0"
 log = "0.4.29"
+jpeg-encoder = "0.7.0"
+imagequant = "4.4.1"
+png = "0.18.1"
+rgb = "0.8.53"
 

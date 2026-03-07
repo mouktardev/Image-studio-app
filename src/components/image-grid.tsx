@@ -8,10 +8,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { Progress } from '@/components/ui/progress'
 import { formatBytes } from '@/lib/utils'
 import { type Image, revealInExplorer, openFile, deleteImage } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
-import { Check, ExternalLink, FolderSearch, Trash2, Upload } from 'lucide-react'
+import { Check, ExternalLink, FolderSearch, Trash2, Upload, Archive, FileImage } from 'lucide-react'
+import { useRow } from '@/schema/tinybase-schema'
 
 interface ImageGridProps {
   images: Image[]
@@ -140,6 +142,7 @@ interface ImageGridItemProps {
 
 function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: ImageGridItemProps) {
   const [imageError, setImageError] = useState(false)
+  const compressingState = useRow('compressions', image.id.toString())
 
   const handleOpen = async () => {
     try {
@@ -154,6 +157,24 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
       await revealInExplorer(image.filepath)
     } catch (err) {
       logError(`Failed to reveal file: ${err}`)
+    }
+  }
+
+  const handleOpenCompressed = async () => {
+    if (!image.compressed_filepath) return
+    try {
+      await openFile(image.compressed_filepath)
+    } catch (err) {
+      logError(`Failed to open compressed file: ${err}`)
+    }
+  }
+
+  const handleRevealCompressed = async () => {
+    if (!image.compressed_filepath) return
+    try {
+      await revealInExplorer(image.compressed_filepath)
+    } catch (err) {
+      logError(`Failed to reveal compressed file: ${err}`)
     }
   }
 
@@ -197,20 +218,42 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
               </div>
             )}
 
-            <div className="absolute top-2 left-2">
+            <div className="absolute top-2 left-2 flex gap-1">
               {isSelected && (
-                <span className="bg-primary text-primary-foreground flex h-6 w-6 items-center justify-center rounded-full">
+                <span className="bg-primary text-primary-foreground flex h-6 w-6 items-center justify-center rounded-full shadow-md">
                   <Check className="h-4 w-4" />
+                </span>
+              )}
+              {image.compressed_filepath && (
+                <span
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-md"
+                  title="Compressed"
+                >
+                  <Archive className="h-3 w-3" />
                 </span>
               )}
             </div>
 
             <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-3 py-2">
               <p className="truncate text-sm font-semibold text-white">{image.filename}</p>
-              <p className="text-xs text-white/80">
-                {image.size ? formatBytes(image.size) : 'Unknown size'}
-              </p>
+              <div className="flex items-center justify-between text-xs text-white/80">
+                <span>{image.size ? formatBytes(image.size) : 'Unknown'}</span>
+                {image.compressed_size && (
+                  <span className="ml-2 text-green-300" title="Compressed Size">
+                    {formatBytes(image.compressed_size)}
+                  </span>
+                )}
+              </div>
             </div>
+
+            {Object.keys(compressingState).length > 0 && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 p-4 text-white backdrop-blur-sm">
+                <Progress value={compressingState.progress as number} className="mb-2 h-2 w-full" />
+                <span className="text-center text-xs font-medium">
+                  {compressingState.message as string}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </ContextMenuTrigger>
@@ -218,12 +261,27 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
       <ContextMenuContent>
         <ContextMenuItem onClick={handleOpen}>
           <ExternalLink className="mr-2 h-4 w-4" />
-          Open
+          Open Original
         </ContextMenuItem>
         <ContextMenuItem onClick={handleReveal}>
           <FolderSearch className="mr-2 h-4 w-4" />
-          Reveal in Explorer
+          Reveal Original
         </ContextMenuItem>
+
+        {image.compressed_filepath && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={handleOpenCompressed}>
+              <FileImage className="mr-2 h-4 w-4" />
+              Open Compressed
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleRevealCompressed}>
+              <FolderSearch className="mr-2 h-4 w-4" />
+              Reveal Compressed
+            </ContextMenuItem>
+          </>
+        )}
+
         <ContextMenuSeparator />
         <ContextMenuItem onClick={handleDelete} className="text-red-500">
           <Trash2 className="mr-2 h-4 w-4" />

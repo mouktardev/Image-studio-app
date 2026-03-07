@@ -8,6 +8,7 @@ import {
   deleteImagesByIds,
   selectFiles,
   importImagesBulk,
+  compressImagesByIds,
   type Image,
 } from '@/lib/tauri'
 import {
@@ -136,6 +137,21 @@ function IndexPage() {
     [selectedIds]
   )
 
+  const handleCompressSelected = useCallback(async (ids: number[], quality: number) => {
+    try {
+      const count = ids.length
+      await compressImagesByIds(ids, quality)
+      const updated = await getAllImages()
+      setImages(updated)
+      await addNotification({
+        message: `Compressed ${count} image${count > 1 ? 's' : ''}`,
+        status: 'success',
+      })
+    } catch (err) {
+      logError(`Failed to compress images: ${err}`)
+    }
+  }, [])
+
   return (
     <div className="relative flex flex-1 flex-col">
       {isImporting && (
@@ -152,6 +168,7 @@ function IndexPage() {
         onSelectionChange={handleSelectionChange}
         onImport={handleImport}
         onDeleteSelected={handleDeleteSelected}
+        onCompressSelected={handleCompressSelected}
         isImporting={isImporting}
       />
       <ImageGrid

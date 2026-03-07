@@ -15,6 +15,8 @@ pub struct Image {
     pub size: Option<i64>,
     pub width: Option<i64>,
     pub height: Option<i64>,
+    pub compressed_filepath: Option<String>,
+    pub compressed_size: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -44,8 +46,13 @@ pub struct ImportResult {
 
 #[tauri::command]
 pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>)>(
-        "SELECT id, filename, filepath, mimetype, size, width, height FROM images ORDER BY id DESC"
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>)>(
+        "SELECT 
+            i.id, i.filename, i.filepath, i.mimetype, i.size, i.width, i.height,
+            ci.filepath as compressed_filepath, ci.size as compressed_size
+         FROM images i
+         LEFT JOIN compressed_images ci ON ci.original_id = i.id
+         ORDER BY i.id DESC"
     )
     .fetch_all(&state.0)
     .await
@@ -53,8 +60,8 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
 
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height)| {
-            Image { id, filename, filepath, mimetype, size, width, height }
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size)| {
+            Image { id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size }
         })
         .collect();
 
@@ -94,6 +101,8 @@ pub async fn add_image(data: AddImageData, state: State<'_, DbState>) -> Result<
         size: data.size,
         width: data.width,
         height: data.height,
+        compressed_filepath: None,
+        compressed_size: None,
     })
 }
 
@@ -198,6 +207,12 @@ pub async fn import_images_bulk(
 
 #[tauri::command]
 pub async fn delete_image(id: i64, state: State<'_, DbState>) -> Result<(), String> {
+    sqlx::query("DELETE FROM compressed_images WHERE original_id = ?")
+        .bind(id)
+        .execute(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
     sqlx::query("DELETE FROM images WHERE id = ?")
         .bind(id)
         .execute(&state.0)
@@ -214,8 +229,16 @@ pub async fn delete_images_by_ids(ids: Vec<i64>, state: State<'_, DbState>) -> R
     }
 
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
-    let query = format!("DELETE FROM images WHERE id IN ({})", placeholders);
+    
+    // Also explicitly delete compressed images
+    let ci_query = format!("DELETE FROM compressed_images WHERE original_id IN ({})", placeholders);
+    let mut ci_q = sqlx::query(&ci_query);
+    for id in &ids {
+        ci_q = ci_q.bind(id);
+    }
+    ci_q.execute(&state.0).await.map_err(|e| e.to_string())?;
 
+    let query = format!("DELETE FROM images WHERE id IN ({})", placeholders);
     let mut q = sqlx::query(&query);
     for id in &ids {
         q = q.bind(id);
