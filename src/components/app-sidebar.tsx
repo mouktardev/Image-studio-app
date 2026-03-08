@@ -11,7 +11,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { AppWindowIcon, ImageDown, SettingsIcon, TerminalIcon } from 'lucide-react'
+import { AppWindowIcon, ImageDown, SettingsIcon, TerminalIcon, Folder } from 'lucide-react'
 
 interface AppSidebarProps {
   onToggleLogs: () => void
@@ -21,6 +21,7 @@ interface AppSidebarProps {
 export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
   const location = useLocation()
   const isHomeActive = location.pathname === '/'
+  const isOutputActive = location.pathname === '/output'
   const isSettingsActive = location.pathname === '/settings'
 
   return (
@@ -31,7 +32,7 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
             <div className="flex items-center gap-2 px-2 py-1">
               <AppWindowIcon className="h-5 w-5 shrink-0" />
               <span className="text-lg font-semibold group-data-[collapsible=icon]:hidden">
-                Image App
+                Image studio
               </span>
             </div>
           </SidebarMenuButton>
@@ -43,10 +44,18 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isHomeActive}>
+                <SidebarMenuButton asChild isActive={isHomeActive} tooltip="compress images">
                   <Link to="/">
                     <ImageDown className="h-4 w-4" />
                     <span>Compression</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={isOutputActive}>
+                  <Link to="/output">
+                    <Folder className="h-4 w-4" />
+                    <span>Output</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

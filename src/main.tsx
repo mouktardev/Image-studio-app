@@ -14,7 +14,8 @@ import {
 import { createQueries, createStore } from 'tinybase/with-schemas'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
-import { setupLogger } from '@/lib/logger'
+import { setupLogger, attachGlobalLogListener } from '@/lib/logger'
+import { useEffect } from 'react'
 
 setupLogger()
 // Create a new router instance
@@ -33,6 +34,16 @@ export function App() {
       .setTable('clients', { 0: { name: 'David' } })
   )
   const queries = useCreateQueries(store, createQueries, [])
+
+  useEffect(() => {
+    if (store) {
+      const promise = attachGlobalLogListener(store)
+      return () => {
+        promise.then((detach) => detach())
+      }
+    }
+  }, [store])
+
   return (
     <ThemeProvider defaultTheme="dark" storageKey="theme">
       <TooltipProvider>

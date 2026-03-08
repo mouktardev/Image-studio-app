@@ -87,7 +87,7 @@ function RouteComponent() {
       <CompressionListener />
       <AppSidebar onToggleLogs={() => setLogsOpen((v) => !v)} logsOpen={logsOpen} />
       <SidebarInset className="flex flex-col">
-        <header className="bg-muted/40 flex h-10 shrink-0 items-center justify-between gap-4 border-b px-6">
+        <header className="bg-sidebar sticky top-0 z-10 flex h-10 shrink-0 items-center justify-between gap-4 border-b px-4">
           <div className="flex items-center gap-4">
             <SidebarTrigger />
           </div>

@@ -69,6 +69,30 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
 }
 
 #[tauri::command]
+pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>)>(
+        "SELECT 
+            i.id, i.filename, ci.filepath, i.mimetype, ci.size, i.width, i.height,
+            ci.filepath as compressed_filepath, ci.size as compressed_size
+         FROM images i
+         INNER JOIN compressed_images ci ON ci.original_id = i.id
+         ORDER BY ci.id DESC"
+    )
+    .fetch_all(&state.0)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let images: Vec<Image> = rows
+        .into_iter()
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size)| {
+            Image { id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size }
+        })
+        .collect();
+
+    Ok(images)
+}
+
+#[tauri::command]
 pub async fn add_image(data: AddImageData, state: State<'_, DbState>) -> Result<Image, String> {
     let path = PathBuf::from(&data.filepath);
     let canonical_path = canonicalize(&path)
@@ -220,6 +244,57 @@ pub async fn delete_image(id: i64, state: State<'_, DbState>) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
+    let mut deleted_count = 0;
+
+    // 1. Check original images
+    let originals: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (id, filepath) in originals {
+        if !std::path::Path::new(&filepath).exists() {
+            // Delete associated compressed images first
+            sqlx::query("DELETE FROM compressed_images WHERE original_id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+                
+            // Delete original
+            sqlx::query("DELETE FROM images WHERE id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+                
+            deleted_count += 1;
+        }
+    }
+
+    // 2. Check remaining compressed images (where original exists, but compressed file was deleted)
+    let compressions: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM compressed_images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (id, filepath) in compressions {
+        if !std::path::Path::new(&filepath).exists() {
+            sqlx::query("DELETE FROM compressed_images WHERE id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+                
+            deleted_count += 1;
+        }
+    }
+
+    Ok(deleted_count)
 }
 
 #[tauri::command]

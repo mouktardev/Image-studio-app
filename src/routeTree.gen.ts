@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
+import { Route as AppOutputRouteImport } from './routes/_app/output'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -27,27 +28,35 @@ const AppSettingsRoute = AppSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppOutputRoute = AppOutputRouteImport.update({
+  id: '/output',
+  path: '/output',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/output': typeof AppOutputRoute
   '/settings': typeof AppSettingsRoute
 }
 export interface FileRoutesByTo {
+  '/output': typeof AppOutputRoute
   '/settings': typeof AppSettingsRoute
   '/': typeof AppIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/_app/output': typeof AppOutputRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/settings'
+  fullPaths: '/' | '/output' | '/settings'
   fileRoutesByTo: FileRoutesByTo
-  to: '/settings' | '/'
-  id: '__root__' | '/_app' | '/_app/settings' | '/_app/'
+  to: '/output' | '/settings' | '/'
+  id: '__root__' | '/_app' | '/_app/output' | '/_app/settings' | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,15 +86,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/output': {
+      id: '/_app/output'
+      path: '/output'
+      fullPath: '/output'
+      preLoaderRoute: typeof AppOutputRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
+  AppOutputRoute: typeof AppOutputRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppOutputRoute: AppOutputRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppIndexRoute: AppIndexRoute,
 }

@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "tauri-v2-templates",
-        "width": 800,
-        "height": 600,
+        "width": 943,
+        "height": 688,
         "dragDropEnabled": true
       }
     ],

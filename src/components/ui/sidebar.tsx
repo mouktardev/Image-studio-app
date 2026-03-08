@@ -481,7 +481,7 @@ function SidebarMenuButton({
   tooltip?: string | React.ComponentProps<typeof TooltipContent>
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const Comp = asChild ? Slot.Root : 'button'
-  const { isMobile, state } = useSidebar()
+  const { isMobile } = useSidebar()
 
   const button = (
     <Comp
@@ -507,12 +507,7 @@ function SidebarMenuButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent
-        side="right"
-        align="center"
-        hidden={state !== 'collapsed' || isMobile}
-        {...tooltip}
-      />
+      <TooltipContent side="right" align="center" hidden={isMobile} {...tooltip} />
     </Tooltip>
   )
 }

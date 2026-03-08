@@ -3,7 +3,7 @@ mod crud;
 
 use db::{get_db_url, init_db, get_setting as db_get_setting, set_setting as db_set_setting};
 use tauri_plugin_log::{Target, TargetKind};
-use crud::images::{get_all_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, get_image_metadata};
+use crud::images::{get_all_images, get_all_compressed_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, sync_database, get_image_metadata};
 use crud::notifications::{get_all_notifications, add_notification, mark_notification_read, delete_notification, mark_all_notifications_read, clear_all_notifications};
 use crud::selections::{get_selections, set_selections, add_selection, remove_selection, clear_selections};
 use crud::compression::compress_images_by_ids;
@@ -91,10 +91,12 @@ pub fn run() {
             get_setting,
             set_setting,
             get_all_images,
+            get_all_compressed_images,
             add_image,
             import_images_bulk,
             delete_image,
             delete_images_by_ids,
+            sync_database,
             get_image_metadata,
             get_all_notifications,
             add_notification,

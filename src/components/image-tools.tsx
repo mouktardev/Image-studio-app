@@ -63,15 +63,21 @@ export function ImageTools({
         <Checkbox
           id="select-all"
           checked={
-            selectedIds.length === images.length
-              ? true
-              : selectedIds.length > 0
-                ? 'indeterminate'
-                : false
+            images.length === 0
+              ? false
+              : selectedIds.length === images.length
+                ? true
+                : selectedIds.length > 0
+                  ? 'indeterminate'
+                  : false
           }
           onCheckedChange={handleSelectAll}
+          disabled={images.length === 0}
         />
-        <label htmlFor="select-all" className="cursor-pointer text-sm">
+        <label
+          htmlFor="select-all"
+          className={`text-sm ${images.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+        >
           {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select all'}
         </label>
       </div>
@@ -113,7 +119,7 @@ export function ImageTools({
                       key={img.id}
                       className="flex items-center justify-between border-b py-1 last:border-b-0"
                     >
-                      <span className="max-w-[200px] truncate">{img.filename}</span>
+                      <span className="max-w-50 truncate">{img.filename}</span>
                       <span className="text-muted-foreground text-xs">
                         {img.size ? formatBytes(img.size) : 'Unknown'}
                       </span>
@@ -173,7 +179,7 @@ export function ImageTools({
                           key={img.id}
                           className="flex items-center justify-between border-b py-1 last:border-b-0"
                         >
-                          <span className="max-w-[150px] truncate text-sm">{img.filename}</span>
+                          <span className="max-w-37.5 truncate text-sm">{img.filename}</span>
                           <span className="text-muted-foreground flex items-center gap-2 text-xs">
                             <span>{img.size ? formatBytes(img.size) : '?'}</span>
                             <span>→</span>

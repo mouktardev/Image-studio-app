@@ -9,6 +9,11 @@ export const tablesSchema = {
     progress: { type: 'number' },
     message: { type: 'string' },
   },
+  logs: {
+    level: { type: 'number' },
+    message: { type: 'string' },
+    timestamp: { type: 'number' },
+  },
 } as const
 
 export const valuesSchema = {
@@ -70,6 +75,8 @@ export const {
   SliceProps,
   SliceView,
   useStore,
+  useSetTableCallback,
+  useDelTableCallback,
   useLocalRowIds,
   CellView,
   ResultCellProps,

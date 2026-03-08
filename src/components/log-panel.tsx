@@ -1,18 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { LogLevel, attachLogger } from '@tauri-apps/plugin-log'
+import { LogLevel } from '@tauri-apps/plugin-log'
 import { X, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
 import { cn } from '@/lib/utils'
-
-interface LogEntry {
-  id: number
-  level: LogLevel
-  message: string
-  timestamp: Date
-}
-
-const MAX_ENTRIES = 200
+import { useTable, useDelTableCallback } from '@/schema/tinybase-schema'
 
 const LEVEL_LABEL: Record<LogLevel, string> = {
   [LogLevel.Trace]: 'TRACE',
@@ -38,37 +30,28 @@ const BADGE_CLASS: Record<LogLevel, string> = {
   [LogLevel.Error]: 'bg-red-500/20 text-red-400',
 }
 
-let idCounter = 0
-
 interface LogPanelProps {
   onClose: () => void
 }
 
 export function LogPanel({ onClose }: LogPanelProps) {
   const { state } = useSidebar()
-  const [entries, setEntries] = useState<LogEntry[]>([])
+  const logsTable = useTable('logs')
+  const clearLogs = useDelTableCallback('logs')
   const scrollRef = useRef<HTMLDivElement>(null)
   const [autoScroll, setAutoScroll] = useState(true)
 
+  const entries = Object.entries(logsTable)
+    .map(([id, row]) => ({
+      id,
+      level: row.level as LogLevel,
+      message: row.message as string,
+      timestamp: new Date(row.timestamp as number),
+    }))
+    .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
+
   // Mirror sidebar's left offset using its CSS variables so it tracks the toggle animation
   const left = state === 'expanded' ? 'var(--sidebar-width)' : 'var(--sidebar-width-icon)'
-
-  useEffect(() => {
-    let detach: (() => void) | null = null
-
-    attachLogger((record) => {
-      setEntries((prev) => [
-        ...prev.slice(-(MAX_ENTRIES - 1)),
-        { id: ++idCounter, level: record.level, message: record.message, timestamp: new Date() },
-      ])
-    }).then((fn) => {
-      detach = fn
-    })
-
-    return () => {
-      detach?.()
-    }
-  }, [])
 
   // Auto-scroll to bottom when new entries arrive
   useEffect(() => {
@@ -99,7 +82,7 @@ export function LogPanel({ onClose }: LogPanelProps) {
             size="icon"
             className="size-6"
             title="Clear logs"
-            onClick={() => setEntries([])}
+            onClick={clearLogs}
           >
             <Trash2 className="size-3.5" />
           </Button>

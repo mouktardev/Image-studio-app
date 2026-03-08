@@ -86,12 +86,20 @@ export async function getAllImages(): Promise<Image[]> {
   return invoke<Image[]>('get_all_images')
 }
 
+export async function getAllCompressedImages(): Promise<Image[]> {
+  return invoke<Image[]>('get_all_compressed_images')
+}
+
 export async function addImage(data: AddImageData): Promise<Image> {
   return invoke<Image>('add_image', { data })
 }
 
 export async function deleteImage(id: number): Promise<void> {
   return invoke<void>('delete_image', { id })
+}
+
+export async function syncDatabase(): Promise<number> {
+  return invoke<number>('sync_database')
 }
 
 export async function deleteImagesByIds(ids: number[]): Promise<void> {

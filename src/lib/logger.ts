@@ -6,6 +6,7 @@ import {
   trace as tauriTrace,
   attachLogger,
 } from '@tauri-apps/plugin-log'
+import type { AppStore } from '@/schema/tinybase-schema'
 
 function fmt(message: unknown, ...args: unknown[]): string {
   const parts = [typeof message === 'string' ? message : JSON.stringify(message)]
@@ -22,6 +23,26 @@ export function setupLogger() {
   console.info = (message: unknown, ...args: unknown[]) => tauriInfo(fmt(message, ...args))
   console.log = (message: unknown, ...args: unknown[]) => tauriDebug(fmt(message, ...args))
   console.debug = (message: unknown, ...args: unknown[]) => tauriTrace(fmt(message, ...args))
+}
+
+let idCounter = 0
+const MAX_LOGS = 200
+
+export async function attachGlobalLogListener(store: AppStore) {
+  return attachLogger((record) => {
+    const id = (++idCounter).toString()
+    store.setRow('logs', id, {
+      level: record.level,
+      message: record.message,
+      timestamp: Date.now(),
+    })
+
+    // Keep memory bounded
+    const logIds = store.getRowIds('logs')
+    if (logIds.length > MAX_LOGS) {
+      store.delRow('logs', logIds[0])
+    }
+  })
 }
 
 export {

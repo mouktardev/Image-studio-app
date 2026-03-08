@@ -8,19 +8,32 @@ import {
   revealInExplorer,
   selectFolder,
   getDbPath,
+  syncDatabase,
 } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { FolderOpenIcon, FolderIcon, RefreshCw, EyeIcon } from 'lucide-react'
+import {
+  FolderOpenIcon,
+  FolderIcon,
+  RefreshCw,
+  EyeIcon,
+  DatabaseZap,
+  Sun,
+  Moon,
+  Monitor,
+} from 'lucide-react'
+import { toast } from 'sonner'
+import { useTheme } from '@/components/theme-provider'
 
 export const Route = createFileRoute('/_app/settings')({
   component: SettingsPage,
 })
 
 function SettingsPage() {
+  const { theme, setTheme } = useTheme()
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
   const [outputPath, setOutputPath] = useState<string>('')
   const [dbPath, setDbPath] = useState<string>('')
@@ -112,14 +125,15 @@ function SettingsPage() {
   return (
     <div className="container mx-auto max-w-2xl px-3 py-8">
       <h1 className="mb-6 text-3xl font-bold">Settings</h1>
-
       {/* Database Status */}
-      <Card className="mb-6">
+      <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
               <CardTitle>Database Status</CardTitle>
-              <CardDescription>Check if the database is initialized</CardDescription>
+              <CardDescription>
+                Manage your SQLite database and check for orphaned files
+              </CardDescription>
             </div>
             {isInitialized !== null && (
               <Badge variant={isInitialized ? 'default' : 'destructive'}>
@@ -142,14 +156,35 @@ function SettingsPage() {
             </Button>
           )}
           {isInitialized && (
-            <div className="space-y-2">
+            <div className="space-y-4">
               <p className="text-muted-foreground text-sm">Database is ready to use.</p>
-              {dbPath && (
+              <div className="flex gap-2">
                 <Button variant="outline" size="sm" onClick={handleRevealDbFolder}>
                   <EyeIcon className="mr-2 h-4 w-4" />
                   Reveal Database Folder
                 </Button>
-              )}
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    try {
+                      const deletedCount = await syncDatabase()
+                      if (deletedCount > 0) {
+                        toast.success(`Cleaned up ${deletedCount} orphaned records.`)
+                      } else {
+                        toast.info('Database is perfectly in sync with filesystem.')
+                      }
+                    } catch (err) {
+                      logError(`Failed to sync database: ${err}`)
+                      toast.error('Failed to sync database')
+                    }
+                  }}
+                >
+                  <DatabaseZap className="mr-2 h-4 w-4" />
+                  Sync / Clean DB
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
@@ -183,6 +218,41 @@ function SettingsPage() {
             >
               <FolderOpenIcon className="mr-2 h-4 w-4" />
               {isChangingFolder ? 'Changing...' : 'Change Folder'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+      {/* Theme */}
+      <Card className="my-4">
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Choose how the application looks</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex gap-2">
+            <Button
+              variant={theme === 'light' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTheme('light')}
+            >
+              <Sun className="mr-2 h-4 w-4" />
+              Light
+            </Button>
+            <Button
+              variant={theme === 'dark' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTheme('dark')}
+            >
+              <Moon className="mr-2 h-4 w-4" />
+              Dark
+            </Button>
+            <Button
+              variant={theme === 'system' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTheme('system')}
+            >
+              <Monitor className="mr-2 h-4 w-4" />
+              System
             </Button>
           </div>
         </CardContent>
