@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri-v2-templates",
-  "version": "0.1.0",
-  "identifier": "com.pc.tauri-v2-templates",
+  "productName": "Image Studio",
+  "version": "1.0.0",
+  "identifier": "com.imagestudio.app",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "tauri-v2-templates",
+        "title": "Image Studio",
         "width": 943,
         "height": 688,
         "dragDropEnabled": true

@@ -1,7 +1,8 @@
 {
-  "name": "tauri-v2-templates",
+  "name": "image-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
+  "author": "Mouktar",
   "type": "module",
   "scripts": {
     "dev": "vite",
