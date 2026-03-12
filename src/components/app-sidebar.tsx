@@ -12,6 +12,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { AppWindowIcon, ImageDown, SettingsIcon, TerminalIcon, Folder } from 'lucide-react'
+import UpdateChecker from '@/components/update-checker'
 
 interface AppSidebarProps {
   onToggleLogs: () => void
@@ -94,7 +95,7 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton size="sm" asChild>
-              <div className="text-muted-foreground px-2 py-1 text-[0.60rem]">v0.1.0</div>
+              <UpdateChecker className="ml-auto" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -52,3 +52,12 @@ bun run tauri build
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+## Roadmap
+
+These are the next areas we're planning to improve:
+
+- [ ] Add **AI-powered upscaling** (optional upscaling/compression presets)
+- [ ] Improve **batch compression workflow** (progress UI + cancel support)
+
+<!-- > Want to contribute? Open an issue or submit a pull request with your ideas! -->

@@ -12,8 +12,18 @@ import { Progress } from '@/components/ui/progress'
 import { formatBytes } from '@/lib/utils'
 import { type Image, revealInExplorer, openFile, deleteImage } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
-import { Check, ExternalLink, FolderSearch, Trash2, Upload, Archive, FileImage } from 'lucide-react'
+import {
+  Check,
+  ExternalLink,
+  FolderSearch,
+  Trash2,
+  Upload,
+  Archive,
+  FileImage,
+  Columns,
+} from 'lucide-react'
 import { useRow } from '@/schema/tinybase-schema'
+import { ImageCompare } from '@/components/image-compare'
 
 interface ImageGridProps {
   images: Image[]
@@ -33,6 +43,7 @@ export function ImageGrid({
   onDrop,
 }: ImageGridProps) {
   const [isDragging, setIsDragging] = useState(false)
+  const [compareImage, setCompareImage] = useState<Image | null>(null)
 
   useEffect(() => {
     const unlistenDragEnter = listen<{ paths: string[] }>('tauri://drag-enter', () => {
@@ -115,6 +126,7 @@ export function ImageGrid({
               onSelect={handleSelect}
               onKeyDown={handleKeyDown}
               onDelete={onDelete}
+              onCompare={setCompareImage}
             />
           ))}
         </div>
@@ -128,6 +140,12 @@ export function ImageGrid({
           </div>
         </div>
       )}
+
+      <ImageCompare
+        image={compareImage}
+        open={!!compareImage}
+        onOpenChange={(open) => !open && setCompareImage(null)}
+      />
     </div>
   )
 }
@@ -138,9 +156,17 @@ interface ImageGridItemProps {
   onSelect: (id: number, event: React.MouseEvent | React.KeyboardEvent) => void
   onKeyDown: (id: number, event: React.KeyboardEvent) => void
   onDelete: (id: number) => void
+  onCompare: (image: Image) => void
 }
 
-function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: ImageGridItemProps) {
+function ImageGridItem({
+  image,
+  isSelected,
+  onSelect,
+  onKeyDown,
+  onDelete,
+  onCompare,
+}: ImageGridItemProps) {
   const [imageError, setImageError] = useState(false)
   const compressingState = useRow('compressions', image.id.toString())
 
@@ -185,6 +211,11 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
     } catch (err) {
       logError(`Failed to delete image: ${err}`)
     }
+  }
+
+  const handleCompare = () => {
+    if (!image.compressed_filepath) return
+    onCompare(image)
   }
 
   return (
@@ -271,6 +302,10 @@ function ImageGridItem({ image, isSelected, onSelect, onKeyDown, onDelete }: Ima
         {image.compressed_filepath && (
           <>
             <ContextMenuSeparator />
+            <ContextMenuItem onClick={handleCompare}>
+              <Columns className="mr-2 h-4 w-4" />
+              Compare
+            </ContextMenuItem>
             <ContextMenuItem onClick={handleOpenCompressed}>
               <FileImage className="mr-2 h-4 w-4" />
               Open Compressed

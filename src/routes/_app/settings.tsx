@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   FolderOpenIcon,
   FolderIcon,
@@ -40,10 +41,21 @@ function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isInitializing, setIsInitializing] = useState(false)
   const [isChangingFolder, setIsChangingFolder] = useState(false)
+  const [updateChecksEnabled, setUpdateChecksEnabled] = useState(true)
 
   useEffect(() => {
     loadSettings()
+    loadUpdateCheckSetting()
   }, [])
+
+  async function loadUpdateCheckSetting() {
+    try {
+      const enabled = await getSetting('update_checks_enabled')
+      setUpdateChecksEnabled(enabled !== 'false')
+    } catch (err) {
+      logError(`Failed to load update check setting: ${err}`)
+    }
+  }
 
   async function loadSettings() {
     setIsLoading(true)
@@ -125,6 +137,7 @@ function SettingsPage() {
   return (
     <div className="container mx-auto max-w-2xl px-3 py-8">
       <h1 className="mb-6 text-3xl font-bold">Settings</h1>
+
       {/* Database Status */}
       <Card>
         <CardHeader>
@@ -222,6 +235,43 @@ function SettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <Separator className="my-6" />
+
+      {/* Update Settings */}
+      <Card className="my-4">
+        <CardHeader>
+          <CardTitle>Updates</CardTitle>
+          <CardDescription>Configure application update behavior</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-3">
+            <Checkbox
+              id="update-checks"
+              checked={updateChecksEnabled}
+              onCheckedChange={(checked) => {
+                const value = Boolean(checked)
+                setUpdateChecksEnabled(value)
+                setSetting('update_checks_enabled', value ? 'true' : 'false').catch((err) => {
+                  logError(`Failed to save update check setting: ${err}`)
+                })
+              }}
+            />
+            <label
+              htmlFor="update-checks"
+              className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Enable automatic update checks
+            </label>
+          </div>
+          <p className="text-muted-foreground mt-2 text-sm">
+            When enabled, the app will periodically check for updates
+          </p>
+        </CardContent>
+      </Card>
+
+      <Separator className="my-6" />
+
       {/* Theme */}
       <Card className="my-4">
         <CardHeader>
