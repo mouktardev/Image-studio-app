@@ -3,6 +3,8 @@ import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { getSetting } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
+import { getVersion } from '@tauri-apps/api/app'
+import { Download, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 
 interface UpdateCheckerProps {
   className?: string
@@ -17,6 +19,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
   const [downloadProgress, setDownloadProgress] = useState(0)
   const [showUpToDate, setShowUpToDate] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [appVersion, setAppVersion] = useState<string>('')
 
   const upToDateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isManualCheckRef = useRef(false)
@@ -26,16 +29,19 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
   // Load update check setting
   const [updateChecksEnabled, setUpdateChecksEnabled] = useState(true)
 
-  // Load settings on mount
+  // Load settings and app version on mount
   useEffect(() => {
-    const loadUpdateCheckSetting = async () => {
+    const loadData = async () => {
       try {
+        // Get app version
+        const version = await getVersion()
+        setAppVersion(version)
+
+        // Get update check setting
         const enabled = await getSetting('update_checks_enabled')
-        // If setting is null (not set), default to true
-        // If setting is 'true', enable; otherwise disable
         setUpdateChecksEnabled(enabled !== 'false')
       } catch (err) {
-        logError(`Failed to load update check setting: ${err}`)
+        logError(`Failed to load update checker data: ${err}`)
         // Default to true if we can't load the setting
         setUpdateChecksEnabled(true)
       } finally {
@@ -43,7 +49,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
       }
     }
 
-    loadUpdateCheckSetting()
+    loadData()
   }, [])
 
   // Cleanup timeout on unmount
@@ -57,11 +63,13 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
 
   // Check for updates when settings change
   useEffect(() => {
-    // Don't check if still loading settings
     if (isLoading) return
 
-    // Don't check if updates are disabled
     if (!updateChecksEnabled) {
+      if (upToDateTimeoutRef.current) {
+        clearTimeout(upToDateTimeoutRef.current)
+        upToDateTimeoutRef.current = null
+      }
       setIsChecking(false)
       setUpdateAvailable(false)
       setShowUpToDate(false)
@@ -88,7 +96,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
 
         if (isManualCheckRef.current) {
           setShowUpToDate(true)
-          // Cleanup existing timeout
           if (upToDateTimeoutRef.current) {
             clearTimeout(upToDateTimeoutRef.current)
           }
@@ -138,7 +145,6 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
             break
           case 'Progress':
             downloadedBytesRef.current += event.data.chunkLength
-            // Calculate progress only if we have content length
             if (contentLengthRef.current > 0) {
               const progress = Math.round(
                 (downloadedBytesRef.current / contentLengthRef.current) * 100
@@ -164,103 +170,77 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
   }, [updateChecksEnabled])
 
   // Get status text
-  const getUpdateStatusText = () => {
-    // Loading state
-    if (isLoading) {
-      return 'Loading...'
-    }
-
-    // Error state
-    if (error) {
-      return 'Update error'
-    }
-
-    // Disabled state
-    if (!updateChecksEnabled) {
-      return 'Update checking disabled'
-    }
-
-    // Installing state
+  const getStatusText = () => {
+    if (isLoading) return 'Loading...'
+    if (error) return 'Error'
+    if (!updateChecksEnabled) return 'Disabled'
     if (isInstalling) {
-      if (downloadProgress > 0 && downloadProgress < 100) {
-        return `Downloading... ${downloadProgress}%`
-      }
-      if (downloadProgress === 100) {
-        return 'Installing...'
-      }
+      if (downloadProgress > 0 && downloadProgress < 100) return `Downloading ${downloadProgress}%`
+      if (downloadProgress === 100) return 'Installing...'
       return 'Preparing...'
     }
-
-    // Checking state
-    if (isChecking) return 'Checking for updates...'
-
-    // Up to date (temporary)
+    if (isChecking) return 'Checking...'
     if (showUpToDate) return 'Up to date'
-
-    // Update available
     if (updateAvailable) return 'Update available'
-
-    // Default - click to check
     return 'Check for updates'
   }
 
-  // Determine if component should be clickable
-  const getClickable = () => {
-    // Not clickable if loading, disabled, checking, or installing
-    if (isLoading || !updateChecksEnabled || isChecking || isInstalling) {
-      return false
-    }
-
-    // Clickable if update is available or if manual check is desired
-    return updateAvailable || !showUpToDate
+  // Get icon based on status
+  const getStatusIcon = () => {
+    if (isLoading || isChecking) return <Loader2 className="h-3 w-3 animate-spin" />
+    if (error) return <AlertCircle className="text-destructive h-3 w-3" />
+    if (updateAvailable) return <Download className="text-primary h-3 w-3" />
+    if (isInstalling) return <Loader2 className="h-3 w-3 animate-spin" />
+    return <CheckCircle className="h-3 w-3 text-emerald-500" />
   }
 
-  const isClickable = getClickable()
+  // Get tooltip text
+  const getTooltipText = () => {
+    if (isLoading) return `v${appVersion} - Loading...`
+    if (error) return `v${appVersion} - ${error}`
+    if (!updateChecksEnabled) return `v${appVersion} - Update checking disabled`
+    if (updateAvailable) return `v${appVersion} - Click to update`
+    if (showUpToDate) return `v${appVersion} - You have the latest version`
+    return `v${appVersion} - Click to check for updates`
+  }
+
   const isDisabled = isLoading || !updateChecksEnabled || isChecking || isInstalling
+  const isClickable = !isDisabled && (updateAvailable || (!isChecking && !showUpToDate))
 
   return (
-    <div className={`flex items-center gap-3 ${className}`}>
+    <div className={`flex flex-col gap-0.5 ${className}`}>
+      {/* Version line - always visible */}
+      <span className="text-muted-foreground/60 px-1 text-[10px]" title={getTooltipText()}>
+        v{appVersion || '0.0.0'}
+      </span>
+
+      {/* Status line */}
       {isClickable ? (
         <button
           onClick={updateAvailable ? installUpdate : handleManualUpdateCheck}
           disabled={isDisabled}
-          className="text-text/60 hover:text-text/80 text-xs tabular-nums transition-colors disabled:opacity-50"
-          title={
-            error ?? (updateAvailable ? 'Click to install update' : 'Click to check for updates')
-          }
+          className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-1 text-xs transition-colors disabled:opacity-50"
+          title={getTooltipText()}
         >
-          {getUpdateStatusText()}
+          {getStatusIcon()}
+          <span className="max-w-[80px] truncate">{getStatusText()}</span>
         </button>
       ) : (
-        <span
-          className="text-text/60 text-xs tabular-nums"
-          role="status"
-          aria-live="polite"
-          title={error ?? undefined}
-        >
-          {getUpdateStatusText()}
-        </span>
-      )}
-
-      {/* Show error indicator */}
-      {error && (
-        <span className="text-destructive text-xs" title={error}>
-          !
-        </span>
-      )}
-
-      {/* Show progress bar during download */}
-      {isInstalling && downloadProgress > 0 && downloadProgress < 100 && (
         <div
-          className="min-w-0 flex-1"
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={downloadProgress}
+          className="text-muted-foreground flex items-center gap-1.5 px-1 text-xs"
+          title={getTooltipText()}
         >
-          <div className="bg-muted/50 h-1.5 rounded">
+          {getStatusIcon()}
+          <span className="max-w-[80px] truncate">{getStatusText()}</span>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      {isInstalling && downloadProgress > 0 && downloadProgress < 100 && (
+        <div className="w-full">
+          <div className="bg-muted/50 h-1 overflow-hidden rounded">
             <div
-              className="bg-primary/80 h-1.5 rounded transition-all duration-300"
+              className="bg-primary h-1 rounded transition-all duration-300"
               style={{ width: `${downloadProgress}%` }}
             />
           </div>
