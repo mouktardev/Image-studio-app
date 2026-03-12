@@ -44,7 +44,7 @@ jobs:
           releaseName: 'Version __VERSION__'
           releaseBody: |
             ## Download
-            - NSIS Installer: Image Studio_0.1.0_x64-setup.exe
-            - MSI Installer: Image Studio_0.1.0_x64_en-US.msi
+            - NSIS Installer: Image Studio_0.1.1_x64-setup.exe
+            - MSI Installer: Image Studio_0.1.1_x64_en-US.msi
           releaseDraft: true
           prerelease: false

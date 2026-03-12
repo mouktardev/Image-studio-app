@@ -1,6 +1,6 @@
 [package]
 name = "Image-Studio"
-version = "0.1.0"
+version = "0.1.1"
 description = "an open source desktop application for for image optimization with ai tools focus on privacy for local devices"
 authors = ["Mouktar"]
 edition = "2021"
