@@ -14,11 +14,11 @@ Open-source desktop application for image optimization with AI-powered tools. Bu
 ## Release
 
 - Download latest release:
-  <a href="https://github.com/mouktardev/image">
+  <a href="https://github.com/mouktardev/Image-studio-app/releases">
   <img src="https://img.shields.io/github/v/release/mouktardev/Image-studio-app"
            alt="Current Version">
   </a>
-  <a href="https://github.com/mouktardev/image/releases">
+  <a href="https://github.com/mouktardev/Image-studio-app/releases">
   <img src="https://img.shields.io/badge/Windows-0078D6"
            alt="Windows Support">
   </a>
@@ -113,9 +113,9 @@ This updates:
 
 ### Step 2: Review & Commit
 
-1. Review the version changes in VS Code's Source Control panel
-2. Stage and commit the changes manually
-3. Push to origin
+1. Review the version changes.
+2. Stage and commit the changes.
+3. Push to origin.
 
 ### Step 3: Push Tag
 
@@ -136,8 +136,7 @@ This will:
 Pushing a tag automatically:
 
 - Builds the app for Windows (NSIS and MSI installers)
-- Creates a GitHub release with downloadable artifacts
-- Includes auto-updater metadata
+- Creates a GitHub release with downloadable artifacts draft
 
 ## Scripts
 
@@ -159,7 +158,7 @@ Pushing a tag automatically:
 ## Project Structure
 
 ```
-├── src/                    # Frontend React source
+├── src/                   # Frontend React source
 ├── src-tauri/             # Tauri backend (Rust)
 │   ├── src/               # Rust source code
 │   ├── Cargo.toml         # Rust dependencies
