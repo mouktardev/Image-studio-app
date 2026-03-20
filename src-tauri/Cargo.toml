@@ -38,4 +38,7 @@ png = "0.18.1"
 rgb = "0.8.53"
 futures = "0.3.32"
 num_cpus = "1.17.0"
+# ort = { version = "2.0.0-rc.12", default-features = false, features = ["cuda", "tensorrt"] }  # TODO: Add back when ONNX integration is ready
+hf-hub = "0.3"
+dirs = "5"
 

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Slider } from '@/components/ui/slider'
+import { Label } from '@/components/ui/label'
 import {
   Dialog,
   DialogContent,
@@ -10,9 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Trash2, Upload, Loader2, ArchiveRestore } from 'lucide-react'
+import { Trash2, Upload, Loader2, ArchiveRestore, Maximize2, Download } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
+import { error as logError } from '@/lib/logger'
+import { getModelStatus, downloadModel, getUpscaleSettings, setUpscaleSettings } from '@/lib/tauri'
 import type { Image } from '@/lib/tauri'
+
+const MODEL_SIZES: Record<string, number> = {
+  'realesrgan-x2': 54 * 1024 * 1024, // Swin2SR-classical-sr-x2-64: ~54 MB
+  'realesrgan-x4': 54 * 1024 * 1024, // swin2SR-realworld-sr-x4: ~54 MB
+}
 
 interface ImageToolsProps {
   images: Image[]
@@ -21,6 +29,7 @@ interface ImageToolsProps {
   onImport: () => void
   onDeleteSelected: (ids: number[]) => void
   onCompressSelected: (ids: number[], quality: number) => void
+  onUpscaleSelected: (ids: number[], scale: number, model: string) => void
   isImporting?: boolean
 }
 
@@ -31,11 +40,74 @@ export function ImageTools({
   onImport,
   onDeleteSelected,
   onCompressSelected,
+  onUpscaleSelected,
   isImporting = false,
 }: ImageToolsProps) {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
   const [openCompressDialog, setOpenCompressDialog] = useState(false)
+  const [openUpscaleDialog, setOpenUpscaleDialog] = useState(false)
   const [compressionQuality, setCompressionQuality] = useState([80])
+  const [upscaleScale, setUpscaleScale] = useState(4)
+  const [upscaleModel, setUpscaleModel] = useState('realesrgan-x4')
+  const [gpuEnabled, setGpuEnabled] = useState(false)
+  const [modelDownloaded, setModelDownloaded] = useState(false)
+  const [modelSize, setModelSize] = useState<number | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+
+  const checkModelStatus = useCallback(async () => {
+    try {
+      const status = await getModelStatus(upscaleModel)
+      setModelDownloaded(status.downloaded)
+      setModelSize(status.size ?? null)
+    } catch (err) {
+      logError(`Failed to check model status: ${err}`)
+      setModelDownloaded(false)
+      setModelSize(null)
+    }
+  }, [upscaleModel])
+
+  const loadUpscaleSettings = useCallback(async () => {
+    try {
+      const settings = await getUpscaleSettings()
+      setUpscaleModel(settings.model)
+      setUpscaleScale(settings.model.includes('x2') ? 2 : 4)
+      setGpuEnabled(settings.gpu_enabled)
+    } catch (err) {
+      logError(`Failed to load upscale settings: ${err}`)
+    }
+  }, [])
+
+  // Load settings once on component mount
+  useEffect(() => {
+    loadUpscaleSettings()
+  }, [loadUpscaleSettings])
+
+  // Check model status when dialog opens
+  useEffect(() => {
+    if (openUpscaleDialog) {
+      checkModelStatus()
+    }
+  }, [openUpscaleDialog, checkModelStatus])
+
+  // Check model status when model changes
+  useEffect(() => {
+    if (openUpscaleDialog && upscaleModel) {
+      checkModelStatus()
+    }
+  }, [upscaleModel, openUpscaleDialog, checkModelStatus])
+
+  const handleDownloadModel = async () => {
+    setIsDownloading(true)
+    try {
+      await downloadModel(upscaleModel)
+      await setUpscaleSettings(upscaleModel, gpuEnabled)
+      setModelDownloaded(true)
+    } catch (err) {
+      logError(`Failed to download model: ${err}`)
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   const handleSelectAll = () => {
     if (selectedIds.length === images.length) {
@@ -55,10 +127,16 @@ export function ImageTools({
     setOpenCompressDialog(false)
   }
 
+  const handleUpscaleConfirm = async () => {
+    await setUpscaleSettings(upscaleModel, gpuEnabled)
+    onUpscaleSelected(selectedIds, upscaleScale, upscaleModel)
+    setOpenUpscaleDialog(false)
+  }
+
   const selectedImages = images.filter((img) => selectedIds.includes(img.id))
 
   return (
-    <div className="flex items-center gap-4 border-b p-4">
+    <div className="bg-background flex items-center gap-4 border-b p-4">
       <div className="flex items-center gap-2">
         <Checkbox
           id="select-all"
@@ -74,12 +152,12 @@ export function ImageTools({
           onCheckedChange={handleSelectAll}
           disabled={images.length === 0}
         />
-        <label
+        <Label
           htmlFor="select-all"
           className={`text-sm ${images.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
         >
           {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select all'}
-        </label>
+        </Label>
       </div>
 
       <Button onClick={onImport} disabled={isImporting}>
@@ -96,6 +174,11 @@ export function ImageTools({
           <Button variant="outline" onClick={() => setOpenCompressDialog(true)}>
             <ArchiveRestore className="mr-2 h-4 w-4" />
             Compress ({selectedIds.length})
+          </Button>
+
+          <Button variant="outline" onClick={() => setOpenUpscaleDialog(true)}>
+            <Maximize2 className="mr-2 h-4 w-4" />
+            Upscale ({selectedIds.length})
           </Button>
 
           <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)}>
@@ -150,9 +233,9 @@ export function ImageTools({
               <div className="space-y-6 py-4">
                 <div className="space-y-4">
                   <div className="flex justify-between">
-                    <label className="text-sm font-medium">
+                    <Label className="text-sm font-medium">
                       Quality ({compressionQuality[0]}%)
-                    </label>
+                    </Label>
                   </div>
                   <Slider
                     value={compressionQuality}
@@ -197,6 +280,125 @@ export function ImageTools({
                   Cancel
                 </Button>
                 <Button onClick={handleCompressConfirm}>Start Compression</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={openUpscaleDialog} onOpenChange={setOpenUpscaleDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Upscale {selectedIds.length} image(s)</DialogTitle>
+                <DialogDescription>
+                  Upscale images using AI-powered super resolution.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 py-4">
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        modelDownloaded ? 'bg-green-500' : 'bg-yellow-500'
+                      }`}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">
+                        {modelDownloaded ? 'Downloaded' : 'Not Downloaded'}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        {modelDownloaded && modelSize
+                          ? formatBytes(modelSize)
+                          : formatBytes(MODEL_SIZES[upscaleModel] || 0)}
+                      </span>
+                    </div>
+                  </div>
+                  {!modelDownloaded && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDownloadModel}
+                      disabled={isDownloading}
+                    >
+                      {isDownloading ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      <span className="text-xs">
+                        {isDownloading ? 'Downloading...' : 'Download'}
+                      </span>
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-4">
+                  <Label className="text-sm font-medium">Scale Factor</Label>
+                  <div className="flex gap-4">
+                    <Button
+                      variant={upscaleScale === 2 ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setUpscaleScale(2)
+                        setUpscaleModel('realesrgan-x2')
+                      }}
+                    >
+                      2x
+                    </Button>
+                    <Button
+                      variant={upscaleScale === 4 ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => {
+                        setUpscaleScale(4)
+                        setUpscaleModel('realesrgan-x4')
+                      }}
+                    >
+                      4x
+                    </Button>
+                  </div>
+                  <p className="text-muted-foreground text-xs">
+                    {upscaleScale === 2
+                      ? 'Swin2SR Classical x2 (~54 MB)'
+                      : 'Swin2SR Real-world x4 (~54 MB)'}
+                  </p>
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="bg-muted max-h-40 overflow-y-auto rounded border p-2">
+                    {selectedImages.map((img) => {
+                      const origWidth = img.width || 0
+                      const origHeight = img.height || 0
+                      const newWidth = origWidth * upscaleScale
+                      const newHeight = origHeight * upscaleScale
+
+                      return (
+                        <div
+                          key={img.id}
+                          className="flex items-center justify-between border-b py-1 last:border-b-0"
+                        >
+                          <span className="max-w-37.5 truncate text-sm">{img.filename}</span>
+                          <span className="text-muted-foreground flex items-center gap-2 text-xs">
+                            <span>
+                              {origWidth}x{origHeight}
+                            </span>
+                            <span>→</span>
+                            <span className="text-foreground font-medium">
+                              {newWidth}x{newHeight}
+                            </span>
+                          </span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setOpenUpscaleDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleUpscaleConfirm} disabled={!modelDownloaded}>
+                  Start Upscaling
+                </Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

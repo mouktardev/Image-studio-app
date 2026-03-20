@@ -1,12 +1,16 @@
 import { createRootRoute, Outlet } from '@tanstack/react-router'
 // import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-import { Inspector } from 'tinybase/ui-react-inspector'
+// import { Inspector } from 'tinybase/ui-react-inspector'
 
 const RootLayout = () => (
   <>
     <Outlet />
-    <Inspector />
-    {/* <TanStackRouterDevtools /> */}
+    {/* {import.meta.env.DEV && (
+      <>
+        <Inspector />
+        <TanStackRouterDevtools />
+      </>
+    )} */}
   </>
 )
 

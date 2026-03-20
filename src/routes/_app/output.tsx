@@ -1,80 +1,90 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useState, useEffect } from 'react'
-import { getAllCompressedImages, type Image, revealInExplorer, openFile } from '@/lib/tauri'
+import { useState, useEffect, useMemo, useCallback, memo } from 'react'
+import {
+  getAllCompressedImages,
+  getAllUpscaledImages,
+  revealInExplorer,
+  openFile,
+  checkDbHealth,
+} from '@/lib/tauri'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { error as logError } from '@/lib/logger'
 import { formatBytes } from '@/lib/utils'
+import { useSetValueCallback } from '@/schema/tinybase-schema'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { ExternalLink, FolderSearch, Archive } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { FolderSearch, Archive, Maximize2, FileImage } from 'lucide-react'
 
 export const Route = createFileRoute('/_app/output')({
   loader: async () => {
-    const images = await getAllCompressedImages()
-    return { images }
+    const [compressedImages, upscaledImages] = await Promise.all([
+      getAllCompressedImages(),
+      getAllUpscaledImages(),
+    ])
+    return { compressedImages, upscaledImages }
   },
+  gcTime: 0,
   staleTime: 0,
   component: OutputPage,
 })
 
-function OutputPage() {
-  const loaderData = Route.useLoaderData()
-  const [images, setImages] = useState<Image[]>(loaderData.images)
+type OutputType = 'all' | 'compressed' | 'upscaled'
 
-  useEffect(() => {
-    setImages(loaderData.images)
-  }, [loaderData])
-
-  return (
-    <div className="relative flex flex-1 flex-col">
-      <div className="border-b p-4">
-        <h2 className="text-lg font-semibold tracking-tight">Output Gallery</h2>
-        <p className="text-muted-foreground text-sm">
-          View all your successfully processed images here.
-        </p>
-      </div>
-
-      <div className="flex-1 overflow-auto p-4">
-        {images.length === 0 ? (
-          <div className="text-muted-foreground flex h-full flex-1 flex-col items-center justify-center gap-4 p-8">
-            <Archive className="h-12 w-12 opacity-20" />
-            <p className="text-lg">No processed images yet</p>
-            <p className="text-sm">Compress some images from the main gallery to see them here.</p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {images.map((image) => (
-              <OutputGridItem key={image.id} image={image} />
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
+type UpscaledVersion = {
+  scale: number
+  filepath: string
+  size: number | null
+  model: string | null
 }
 
-function OutputGridItem({ image }: { image: Image }) {
+type OutputImage = {
+  id: number
+  filename: string
+  filepath: string
+  resultType: 'compressed' | 'upscaled'
+  displayFilepath: string
+  displaySize: number | null
+  upscaled_scale?: number
+}
+
+function parseUpscaledVersions(
+  versions: string | UpscaledVersion[] | undefined
+): UpscaledVersion[] {
+  if (!versions) return []
+  try {
+    return typeof versions === 'string' ? JSON.parse(versions) : versions
+  } catch {
+    return []
+  }
+}
+
+// Memoized grid item to prevent unnecessary re-renders
+const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputImage }) {
   const [imageError, setImageError] = useState(false)
 
-  const handleOpen = async () => {
+  const isCompressed = image.resultType === 'compressed'
+  const isUpscaled = image.resultType === 'upscaled'
+
+  const handleOpen = useCallback(async () => {
     try {
-      await openFile(image.filepath)
+      await openFile(image.displayFilepath)
     } catch (err) {
       logError(`Failed to open file: ${err}`)
     }
-  }
+  }, [image.displayFilepath])
 
-  const handleReveal = async () => {
+  const handleReveal = useCallback(async () => {
     try {
-      await revealInExplorer(image.filepath)
+      await revealInExplorer(image.displayFilepath)
     } catch (err) {
       logError(`Failed to reveal file: ${err}`)
     }
-  }
+  }, [image.displayFilepath])
 
   return (
     <ContextMenu>
@@ -82,44 +92,51 @@ function OutputGridItem({ image }: { image: Image }) {
         <div
           role="button"
           tabIndex={0}
-          className="group hover:ring-muted-foreground/50 relative flex flex-col overflow-hidden rounded-lg shadow hover:ring-2"
-          style={{
-            backgroundColor: '#f5f5f5',
-            backgroundImage:
-              'linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%)',
-            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-            backgroundSize: '20px 20px',
-          }}
+          className="group bg-card hover:border-foreground/50 relative flex flex-col overflow-hidden border transition-all"
         >
-          <div className="relative aspect-4/3 w-full overflow-hidden">
+          <div className="bg-muted relative aspect-4/3 w-full overflow-hidden">
             {!imageError ? (
               <img
-                src={convertFileSrc(image.filepath)}
+                src={convertFileSrc(image.displayFilepath)}
                 alt={image.filename}
                 className="size-full object-cover"
                 onError={() => setImageError(true)}
+                loading="lazy"
               />
             ) : (
-              <div className="bg-muted flex size-full items-center justify-center">
+              <div className="flex size-full items-center justify-center">
                 <FolderSearch className="text-muted-foreground h-8 w-8" />
               </div>
             )}
 
             <div className="absolute top-2 left-2 flex gap-1">
-              <span
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-md"
-                title="Processed"
-              >
-                <Archive className="h-3 w-3" />
-              </span>
+              {isCompressed && (
+                <span
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white"
+                  title="Compressed"
+                >
+                  <Archive className="h-2.5 w-2.5" />
+                </span>
+              )}
+              {isUpscaled && (
+                <span
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-white"
+                  title={`Upscaled ${image.upscaled_scale}x`}
+                >
+                  <Maximize2 className="h-2.5 w-2.5" />
+                </span>
+              )}
             </div>
 
-            <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-3 py-2">
-              <p className="truncate text-sm font-semibold text-white">{image.filename}</p>
-              <div className="flex items-center justify-between text-xs text-white/80">
-                <span className="font-medium text-green-300">
-                  {image.size ? formatBytes(image.size) : 'Unknown'}
+            <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-2 py-1.5">
+              <p className="truncate text-xs font-semibold text-white">{image.filename}</p>
+              <div className="flex items-center justify-between text-[10px] text-white/80">
+                <span className={isUpscaled ? 'text-blue-300' : 'text-green-300'}>
+                  {image.displaySize ? formatBytes(image.displaySize) : 'Unknown'}
                 </span>
+                {isUpscaled && image.upscaled_scale && (
+                  <span className="text-blue-300">{image.upscaled_scale}x</span>
+                )}
               </div>
             </div>
           </div>
@@ -128,8 +145,8 @@ function OutputGridItem({ image }: { image: Image }) {
 
       <ContextMenuContent>
         <ContextMenuItem onClick={handleOpen}>
-          <ExternalLink className="mr-2 h-4 w-4" />
-          Open
+          <FileImage className="mr-2 h-4 w-4" />
+          Open {isCompressed ? 'Compressed' : 'Upscaled'}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleReveal}>
           <FolderSearch className="mr-2 h-4 w-4" />
@@ -137,5 +154,120 @@ function OutputGridItem({ image }: { image: Image }) {
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
+  )
+})
+
+function OutputPage() {
+  const loaderData = Route.useLoaderData()
+  const [outputType, setOutputType] = useState<OutputType>('all')
+
+  const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
+
+  // Check DB health on mount to detect orphaned records
+  useEffect(() => {
+    checkDbHealth()
+      .then((orphanCount) => {
+        if (orphanCount > 0) {
+          setDbNeedsSync()
+        }
+      })
+      .catch((err) => logError(`Failed to check DB health: ${err}`))
+  }, [setDbNeedsSync])
+
+  // Memoized image processing
+  const images = useMemo(() => {
+    const compressedList: OutputImage[] = loaderData.compressedImages
+      .filter((img) => img.compressed_filepath)
+      .map((img) => ({
+        id: img.id,
+        filename: img.filename,
+        filepath: img.compressed_filepath!,
+        resultType: 'compressed' as const,
+        displayFilepath: img.compressed_filepath!,
+        displaySize: img.compressed_size ?? null,
+      }))
+
+    const upscaledList: OutputImage[] = []
+
+    // Process upscaled images - each row has one upscaled version in the JSON
+    for (const img of loaderData.upscaledImages) {
+      const versions = parseUpscaledVersions(img.upscaled_versions)
+      for (const version of versions) {
+        upscaledList.push({
+          id: img.id,
+          filename: img.filename,
+          filepath: version.filepath,
+          resultType: 'upscaled' as const,
+          displayFilepath: version.filepath,
+          displaySize: version.size,
+          upscaled_scale: version.scale,
+        })
+      }
+    }
+
+    if (outputType === 'all') {
+      return [...compressedList, ...upscaledList]
+    } else if (outputType === 'compressed') {
+      return compressedList
+    } else {
+      return upscaledList
+    }
+  }, [loaderData, outputType])
+
+  const handleOutputTypeChange = useCallback((type: OutputType) => {
+    setOutputType(type)
+  }, [])
+
+  return (
+    <>
+      <div className="flex gap-2 border-b px-4 py-2">
+        <Button
+          variant={outputType === 'all' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => handleOutputTypeChange('all')}
+        >
+          All ({loaderData.compressedImages.length + loaderData.upscaledImages.length})
+        </Button>
+        <Button
+          variant={outputType === 'compressed' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => handleOutputTypeChange('compressed')}
+        >
+          <Archive className="mr-2 h-4 w-4" />
+          Compressed ({loaderData.compressedImages.length})
+        </Button>
+        <Button
+          variant={outputType === 'upscaled' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => handleOutputTypeChange('upscaled')}
+        >
+          <Maximize2 className="mr-2 h-4 w-4" />
+          Upscaled ({loaderData.upscaledImages.length})
+        </Button>
+      </div>
+
+      <section className="customScrollStyle relative h-full max-h-[calc(100vh-113px)] overflow-auto">
+        {images.length === 0 ? (
+          <div className="flex h-full flex-1 flex-col items-center justify-center gap-4">
+            <div className="text-center">
+              <Archive className="text-muted-foreground mx-auto h-10 w-10 opacity-20" />
+              <p className="mt-2 text-sm font-medium">No processed images yet</p>
+              <p className="text-muted-foreground text-xs">
+                Compress or upscale some images from the main gallery to see them here.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {images.map((image) => (
+              <OutputGridItem
+                key={`${image.id}-${image.resultType}-${image.upscaled_scale ?? '0'}`}
+                image={image}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   )
 }

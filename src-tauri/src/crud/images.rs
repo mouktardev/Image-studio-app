@@ -17,6 +17,8 @@ pub struct Image {
     pub height: Option<i64>,
     pub compressed_filepath: Option<String>,
     pub compressed_size: Option<i64>,
+    #[serde(default)]
+    pub upscaled_versions: String,  // JSON array of upscaled versions
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,12 +48,22 @@ pub struct ImportResult {
 
 #[tauri::command]
 pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>)>(
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String)>(
         "SELECT 
             i.id, i.filename, i.filepath, i.mimetype, i.size, i.width, i.height,
-            ci.filepath as compressed_filepath, ci.size as compressed_size
+            ci.filepath as compressed_filepath, ci.size as compressed_size,
+            COALESCE(json_group_array(
+                json_object(
+                    'scale', u.scale_factor,
+                    'filepath', u.filepath,
+                    'size', u.size,
+                    'model', u.model_used
+                )
+            ), '[]') as upscaled_versions
          FROM images i
          LEFT JOIN compressed_images ci ON ci.original_id = i.id
+         LEFT JOIN upscaled_images u ON u.original_id = i.id
+         GROUP BY i.id
          ORDER BY i.id DESC"
     )
     .fetch_all(&state.0)
@@ -60,8 +72,12 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
 
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size)| {
-            Image { id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size }
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions)| {
+            Image { 
+                id, filename, filepath, mimetype, size, width, height, 
+                compressed_filepath, compressed_size,
+                upscaled_versions,
+            }
         })
         .collect();
 
@@ -70,12 +86,22 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
 
 #[tauri::command]
 pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>)>(
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String)>(
         "SELECT 
             i.id, i.filename, ci.filepath, i.mimetype, ci.size, i.width, i.height,
-            ci.filepath as compressed_filepath, ci.size as compressed_size
+            ci.filepath as compressed_filepath, ci.size as compressed_size,
+            COALESCE(json_group_array(
+                json_object(
+                    'scale', u.scale_factor,
+                    'filepath', u.filepath,
+                    'size', u.size,
+                    'model', u.model_used
+                )
+            ), '[]') as upscaled_versions
          FROM images i
          INNER JOIN compressed_images ci ON ci.original_id = i.id
+         LEFT JOIN upscaled_images u ON u.original_id = i.id
+         GROUP BY i.id, ci.id
          ORDER BY ci.id DESC"
     )
     .fetch_all(&state.0)
@@ -84,8 +110,12 @@ pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<
 
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size)| {
-            Image { id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size }
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions)| {
+            Image { 
+                id, filename, filepath, mimetype, size, width, height, 
+                compressed_filepath, compressed_size,
+                upscaled_versions,
+            }
         })
         .collect();
 
@@ -127,6 +157,7 @@ pub async fn add_image(data: AddImageData, state: State<'_, DbState>) -> Result<
         height: data.height,
         compressed_filepath: None,
         compressed_size: None,
+        upscaled_versions: "[]".to_string(),
     })
 }
 
@@ -237,6 +268,12 @@ pub async fn delete_image(id: i64, state: State<'_, DbState>) -> Result<(), Stri
         .await
         .map_err(|e| e.to_string())?;
 
+    sqlx::query("DELETE FROM upscaled_images WHERE original_id = ?")
+        .bind(id)
+        .execute(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
     sqlx::query("DELETE FROM images WHERE id = ?")
         .bind(id)
         .execute(&state.0)
@@ -244,6 +281,49 @@ pub async fn delete_image(id: i64, state: State<'_, DbState>) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn check_db_health(state: State<'_, DbState>) -> Result<i64, String> {
+    let mut orphan_count = 0;
+
+    // 1. Check original images - count orphaned records
+    let originals: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (_id, filepath) in originals {
+        if !std::path::Path::new(&filepath).exists() {
+            orphan_count += 1;
+        }
+    }
+
+    // 2. Check compressed images
+    let compressions: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM compressed_images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (_id, filepath) in compressions {
+        if !std::path::Path::new(&filepath).exists() {
+            orphan_count += 1;
+        }
+    }
+
+    // 3. Check upscaled images
+    let upscaled: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM upscaled_images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (_id, filepath) in upscaled {
+        if !std::path::Path::new(&filepath).exists() {
+            orphan_count += 1;
+        }
+    }
+
+    Ok(orphan_count)
 }
 
 #[tauri::command]
@@ -260,6 +340,13 @@ pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
         if !std::path::Path::new(&filepath).exists() {
             // Delete associated compressed images first
             sqlx::query("DELETE FROM compressed_images WHERE original_id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+            
+            // Delete associated upscaled images
+            sqlx::query("DELETE FROM upscaled_images WHERE original_id = ?")
                 .bind(id)
                 .execute(&state.0)
                 .await
@@ -294,6 +381,24 @@ pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
         }
     }
 
+    // 3. Check remaining upscaled images
+    let upscaled: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM upscaled_images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (id, filepath) in upscaled {
+        if !std::path::Path::new(&filepath).exists() {
+            sqlx::query("DELETE FROM upscaled_images WHERE id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+                
+            deleted_count += 1;
+        }
+    }
+
     Ok(deleted_count)
 }
 
@@ -312,6 +417,14 @@ pub async fn delete_images_by_ids(ids: Vec<i64>, state: State<'_, DbState>) -> R
         ci_q = ci_q.bind(id);
     }
     ci_q.execute(&state.0).await.map_err(|e| e.to_string())?;
+
+    // Also explicitly delete upscaled images
+    let ui_query = format!("DELETE FROM upscaled_images WHERE original_id IN ({})", placeholders);
+    let mut ui_q = sqlx::query(&ui_query);
+    for id in &ids {
+        ui_q = ui_q.bind(id);
+    }
+    ui_q.execute(&state.0).await.map_err(|e| e.to_string())?;
 
     let query = format!("DELETE FROM images WHERE id IN ({})", placeholders);
     let mut q = sqlx::query(&query);

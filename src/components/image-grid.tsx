@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useMemo, memo } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import {
@@ -9,6 +9,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Progress } from '@/components/ui/progress'
+import { Button } from '@/components/ui/button'
 import { formatBytes } from '@/lib/utils'
 import { type Image, revealInExplorer, openFile, deleteImage } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
@@ -19,8 +20,8 @@ import {
   Trash2,
   Upload,
   Archive,
-  FileImage,
   Columns,
+  Maximize2,
 } from 'lucide-react'
 import { useRow } from '@/schema/tinybase-schema'
 import { ImageCompare } from '@/components/image-compare'
@@ -33,6 +34,248 @@ interface ImageGridProps {
   onImport: () => void
   onDrop: (files: string[]) => void
 }
+
+// Memoized item renderer to prevent unnecessary re-renders
+const ImageGridItem = memo(function ImageGridItem({
+  image,
+  isSelected,
+  onSelect,
+  onKeyDown,
+  onDelete,
+  onCompare,
+}: {
+  image: Image
+  isSelected: boolean
+  onSelect: (id: number, event: React.MouseEvent | React.KeyboardEvent) => void
+  onKeyDown: (id: number, event: React.KeyboardEvent) => void
+  onDelete: (id: number) => void
+  onCompare: (image: Image) => void
+}) {
+  const [imageError, setImageError] = useState(false)
+  const compressingState = useRow('compressions', image.id.toString())
+  const upscalingState = useRow('upscalings', image.id.toString())
+
+  // Parse upscaled_versions from JSON string
+  const upscaledVersions = useMemo(() => {
+    if (!image.upscaled_versions) return []
+    try {
+      const parsed =
+        typeof image.upscaled_versions === 'string'
+          ? JSON.parse(image.upscaled_versions)
+          : image.upscaled_versions
+      return Array.isArray(parsed) ? parsed.filter((v) => v && v.scale && v.filepath) : []
+    } catch {
+      return []
+    }
+  }, [image.upscaled_versions])
+
+  const handleOpen = useCallback(async () => {
+    try {
+      await openFile(image.filepath)
+    } catch (err) {
+      logError(`Failed to open file: ${err}`)
+    }
+  }, [image.filepath])
+
+  const handleReveal = useCallback(async () => {
+    try {
+      await revealInExplorer(image.filepath)
+    } catch (err) {
+      logError(`Failed to reveal file: ${err}`)
+    }
+  }, [image.filepath])
+
+  const handleOpenCompressed = useCallback(async () => {
+    if (!image.compressed_filepath) return
+    try {
+      await openFile(image.compressed_filepath)
+    } catch (err) {
+      logError(`Failed to open compressed file: ${err}`)
+    }
+  }, [image.compressed_filepath])
+
+  const handleRevealCompressed = useCallback(async () => {
+    if (!image.compressed_filepath) return
+    try {
+      await revealInExplorer(image.compressed_filepath)
+    } catch (err) {
+      logError(`Failed to reveal compressed file: ${err}`)
+    }
+  }, [image.compressed_filepath])
+
+  const handleDelete = useCallback(async () => {
+    try {
+      await deleteImage(image.id)
+      onDelete(image.id)
+    } catch (err) {
+      logError(`Failed to delete image: ${err}`)
+    }
+  }, [image.id, onDelete])
+
+  const handleCompare = useCallback(() => {
+    if (!image.compressed_filepath) return
+    onCompare(image)
+  }, [image, onCompare])
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => onSelect(image.id, e),
+    [image.id, onSelect]
+  )
+
+  const handleKeyDownLocal = useCallback(
+    (e: React.KeyboardEvent) => onKeyDown(image.id, e),
+    [image.id, onKeyDown]
+  )
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          role="button"
+          tabIndex={0}
+          className={`group bg-card hover:border-foreground/50 relative flex flex-col overflow-hidden border transition-all ${
+            isSelected ? 'ring-primary ring-2' : ''
+          }`}
+          onClick={handleClick}
+          onKeyDown={handleKeyDownLocal}
+        >
+          <div className="bg-muted relative aspect-4/3 w-full overflow-hidden">
+            {!imageError ? (
+              <img
+                src={convertFileSrc(image.filepath)}
+                alt={image.filename}
+                className="size-full object-cover"
+                onError={() => setImageError(true)}
+                loading="lazy"
+              />
+            ) : (
+              <div className="flex size-full items-center justify-center">
+                <FolderSearch className="text-muted-foreground h-8 w-8" />
+              </div>
+            )}
+
+            <div className="absolute top-2 left-2 flex gap-1">
+              {isSelected && (
+                <span className="bg-primary text-primary-foreground flex h-5 w-5 items-center justify-center rounded-full">
+                  <Check className="h-3 w-3" />
+                </span>
+              )}
+              {image.compressed_filepath && (
+                <span
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white"
+                  title="Compressed"
+                >
+                  <Archive className="h-2.5 w-2.5" />
+                </span>
+              )}
+              {upscaledVersions.map((version: { scale: number; filepath: string }, idx: number) => (
+                <span
+                  key={idx}
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-white"
+                  title={`Upscaled ${version.scale}x`}
+                >
+                  <Maximize2 className="h-2.5 w-2.5" />
+                </span>
+              ))}
+            </div>
+
+            <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-2 py-1.5">
+              <p className="truncate text-xs font-semibold text-white">{image.filename}</p>
+              <div className="flex items-center justify-between text-[10px] text-white/80">
+                <span>{image.size ? formatBytes(image.size) : 'Unknown'}</span>
+                {image.compressed_size && (
+                  <span className="text-green-300">→{formatBytes(image.compressed_size)}</span>
+                )}
+                {upscaledVersions.map((version: { scale: number }, idx: number) => (
+                  <span key={idx} className="text-blue-300">
+                    {version.scale}x
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {(Object.keys(compressingState).length > 0 ||
+              Object.keys(upscalingState).length > 0) && (
+              <div className="bg-background/80 absolute inset-0 z-10 flex flex-col items-center justify-center p-2">
+                <Progress
+                  value={
+                    (compressingState.progress as number) || (upscalingState.progress as number)
+                  }
+                  className="mb-1.5 h-1.5 w-full"
+                />
+                <span className="text-[10px] font-medium">
+                  {(compressingState.message as string) || (upscalingState.message as string)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </ContextMenuTrigger>
+
+      <ContextMenuContent>
+        <ContextMenuItem onClick={handleOpen}>
+          <ExternalLink className="mr-2 h-4 w-4" />
+          Open Original
+        </ContextMenuItem>
+        <ContextMenuItem onClick={handleReveal}>
+          <FolderSearch className="mr-2 h-4 w-4" />
+          Reveal Original
+        </ContextMenuItem>
+
+        {image.compressed_filepath && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={handleCompare}>
+              <Columns className="mr-2 h-4 w-4" />
+              Compare
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleOpenCompressed}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open Compressed
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleRevealCompressed}>
+              <FolderSearch className="mr-2 h-4 w-4" />
+              Reveal Compressed
+            </ContextMenuItem>
+          </>
+        )}
+
+        {upscaledVersions.length > 0 && (
+          <>
+            <ContextMenuSeparator />
+            {upscaledVersions.map((version: { scale: number; filepath: string }, idx: number) => (
+              <ContextMenuItem key={idx} onClick={() => openFile(version.filepath)}>
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Open Upscaled {version.scale}x
+              </ContextMenuItem>
+            ))}
+            {upscaledVersions.map((version: { scale: number; filepath: string }, idx: number) => (
+              <ContextMenuItem
+                key={`reveal-${idx}`}
+                onClick={async () => {
+                  try {
+                    await revealInExplorer(version.filepath)
+                  } catch (err) {
+                    logError(`Failed to reveal upscaled file: ${err}`)
+                  }
+                }}
+              >
+                <FolderSearch className="mr-2 h-4 w-4" />
+                Reveal Upscaled {version.scale}x
+              </ContextMenuItem>
+            ))}
+          </>
+        )}
+
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={handleDelete} className="text-red-500">
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+})
 
 export function ImageGrid({
   images,
@@ -106,18 +349,22 @@ export function ImageGrid({
   )
 
   return (
-    <div className={`flex-1 overflow-auto p-4 ${isDragging ? 'bg-primary/5' : ''}`}>
+    <section className="customScrollStyle relative h-full max-h-[calc(100vh-133px)] overflow-auto">
       {images.length === 0 && !isDragging ? (
-        <div className="text-muted-foreground flex flex-1 flex-col items-center justify-center gap-4 p-8">
-          <Upload className="h-12 w-12" />
-          <p className="text-lg">No images found</p>
-          <p className="text-sm">Import images or drag and drop to get started</p>
-          <button onClick={onImport} className="text-primary hover:underline">
+        <div className="flex h-full flex-1 flex-col items-center justify-center gap-4">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <Upload className="text-muted-foreground h-10 w-10" />
+            <p className="text-sm font-medium">No images found</p>
+            <p className="text-muted-foreground text-xs">
+              Import images or drag and drop to get started
+            </p>
+          </div>
+          <Button onClick={onImport} variant="outline" size="sm">
             Import Images
-          </button>
+          </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {images.map((image) => (
             <ImageGridItem
               key={image.id}
@@ -133,10 +380,10 @@ export function ImageGrid({
       )}
 
       {isDragging && (
-        <div className="bg-primary/10 pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
+        <div className="pointer-events-none flex h-full flex-1 flex-col items-center justify-center">
           <div className="border-primary bg-background rounded-lg border-2 border-dashed p-8 text-center">
-            <Upload className="text-primary mx-auto h-12 w-12" />
-            <p className="mt-4 text-lg font-semibold">Drop images here</p>
+            <Upload className="text-primary mx-auto h-10 w-10" />
+            <p className="mt-3 text-sm font-medium">Drop images here</p>
           </div>
         </div>
       )}
@@ -146,183 +393,6 @@ export function ImageGrid({
         open={!!compareImage}
         onOpenChange={(open) => !open && setCompareImage(null)}
       />
-    </div>
-  )
-}
-
-interface ImageGridItemProps {
-  image: Image
-  isSelected: boolean
-  onSelect: (id: number, event: React.MouseEvent | React.KeyboardEvent) => void
-  onKeyDown: (id: number, event: React.KeyboardEvent) => void
-  onDelete: (id: number) => void
-  onCompare: (image: Image) => void
-}
-
-function ImageGridItem({
-  image,
-  isSelected,
-  onSelect,
-  onKeyDown,
-  onDelete,
-  onCompare,
-}: ImageGridItemProps) {
-  const [imageError, setImageError] = useState(false)
-  const compressingState = useRow('compressions', image.id.toString())
-
-  const handleOpen = async () => {
-    try {
-      await openFile(image.filepath)
-    } catch (err) {
-      logError(`Failed to open file: ${err}`)
-    }
-  }
-
-  const handleReveal = async () => {
-    try {
-      await revealInExplorer(image.filepath)
-    } catch (err) {
-      logError(`Failed to reveal file: ${err}`)
-    }
-  }
-
-  const handleOpenCompressed = async () => {
-    if (!image.compressed_filepath) return
-    try {
-      await openFile(image.compressed_filepath)
-    } catch (err) {
-      logError(`Failed to open compressed file: ${err}`)
-    }
-  }
-
-  const handleRevealCompressed = async () => {
-    if (!image.compressed_filepath) return
-    try {
-      await revealInExplorer(image.compressed_filepath)
-    } catch (err) {
-      logError(`Failed to reveal compressed file: ${err}`)
-    }
-  }
-
-  const handleDelete = async () => {
-    try {
-      await deleteImage(image.id)
-      onDelete(image.id)
-    } catch (err) {
-      logError(`Failed to delete image: ${err}`)
-    }
-  }
-
-  const handleCompare = () => {
-    if (!image.compressed_filepath) return
-    onCompare(image)
-  }
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <div
-          role="button"
-          tabIndex={0}
-          className={`group relative flex flex-col overflow-hidden rounded-lg shadow ${isSelected ? 'ring-primary ring-4' : 'hover:ring-muted-foreground/50 hover:ring-2'} `}
-          style={{
-            backgroundColor: '#f5f5f5',
-            backgroundImage:
-              'linear-gradient(45deg, #ddd 25%, transparent 25%), linear-gradient(-45deg, #ddd 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ddd 75%), linear-gradient(-45deg, transparent 75%, #ddd 75%)',
-            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-            backgroundSize: '20px 20px',
-          }}
-          onClick={(e) => onSelect(image.id, e)}
-          onKeyDown={(e) => onKeyDown(image.id, e)}
-        >
-          <div className="relative aspect-4/3 w-full overflow-hidden">
-            {!imageError ? (
-              <img
-                src={convertFileSrc(image.filepath)}
-                alt={image.filename}
-                className="size-full object-cover"
-                onError={() => setImageError(true)}
-              />
-            ) : (
-              <div className="bg-muted flex size-full items-center justify-center">
-                <FolderSearch className="text-muted-foreground h-8 w-8" />
-              </div>
-            )}
-
-            <div className="absolute top-2 left-2 flex gap-1">
-              {isSelected && (
-                <span className="bg-primary text-primary-foreground flex h-6 w-6 items-center justify-center rounded-full shadow-md">
-                  <Check className="h-4 w-4" />
-                </span>
-              )}
-              {image.compressed_filepath && (
-                <span
-                  className="flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-md"
-                  title="Compressed"
-                >
-                  <Archive className="h-3 w-3" />
-                </span>
-              )}
-            </div>
-
-            <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-3 py-2">
-              <p className="truncate text-sm font-semibold text-white">{image.filename}</p>
-              <div className="flex items-center justify-between text-xs text-white/80">
-                <span>{image.size ? formatBytes(image.size) : 'Unknown'}</span>
-                {image.compressed_size && (
-                  <span className="ml-2 text-green-300" title="Compressed Size">
-                    {formatBytes(image.compressed_size)}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {Object.keys(compressingState).length > 0 && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 p-4 text-white backdrop-blur-sm">
-                <Progress value={compressingState.progress as number} className="mb-2 h-2 w-full" />
-                <span className="text-center text-xs font-medium">
-                  {compressingState.message as string}
-                </span>
-              </div>
-            )}
-          </div>
-        </div>
-      </ContextMenuTrigger>
-
-      <ContextMenuContent>
-        <ContextMenuItem onClick={handleOpen}>
-          <ExternalLink className="mr-2 h-4 w-4" />
-          Open Original
-        </ContextMenuItem>
-        <ContextMenuItem onClick={handleReveal}>
-          <FolderSearch className="mr-2 h-4 w-4" />
-          Reveal Original
-        </ContextMenuItem>
-
-        {image.compressed_filepath && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={handleCompare}>
-              <Columns className="mr-2 h-4 w-4" />
-              Compare
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleOpenCompressed}>
-              <FileImage className="mr-2 h-4 w-4" />
-              Open Compressed
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleRevealCompressed}>
-              <FolderSearch className="mr-2 h-4 w-4" />
-              Reveal Compressed
-            </ContextMenuItem>
-          </>
-        )}
-
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={handleDelete} className="text-red-500">
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
+    </section>
   )
 }

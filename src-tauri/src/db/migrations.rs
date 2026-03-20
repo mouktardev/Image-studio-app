@@ -9,6 +9,7 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_notifications_table(pool).await?;
     create_selections_table(pool).await?;
     create_compressed_images_table(pool).await?;
+    create_upscaled_images_table(pool).await?;
     insert_default_settings(pool, app).await?;
     insert_default_swatches(pool).await?;
 
@@ -87,6 +88,16 @@ async fn insert_default_settings(pool: &SqlitePool, app: &AppHandle) -> Result<(
         .await
         .context("Failed to insert default 'output' setting")?;
 
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('upscale_model', 'realesrgan-x4')")
+        .execute(pool)
+        .await
+        .context("Failed to insert default 'upscale_model' setting")?;
+
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('upscale_gpu', 'true')")
+        .execute(pool)
+        .await
+        .context("Failed to insert default 'upscale_gpu' setting")?;
+
     Ok(())
 }
 
@@ -157,6 +168,28 @@ async fn create_compressed_images_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create 'compressed_images' table")?;
+
+    Ok(())
+}
+
+async fn create_upscaled_images_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS upscaled_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            original_id INTEGER NOT NULL,
+            filepath TEXT NOT NULL,
+            scale_factor INTEGER NOT NULL,
+            model_used TEXT NOT NULL,
+            size INTEGER,
+            FOREIGN KEY (original_id) REFERENCES images(id) ON DELETE CASCADE,
+            UNIQUE(original_id, scale_factor)
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'upscaled_images' table")?;
 
     Ok(())
 }

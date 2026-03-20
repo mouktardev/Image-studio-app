@@ -10,17 +10,24 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/ui/sidebar'
 import { AppWindowIcon, ImageDown, SettingsIcon, TerminalIcon, Folder } from 'lucide-react'
-import UpdateChecker from '@/components/update-checker'
+import { useValue, useSetPartialValuesCallback } from '@/schema/tinybase-schema'
 
-interface AppSidebarProps {
-  onToggleLogs: () => void
-  logsOpen: boolean
-}
-
-export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
+export function AppSidebar() {
   const location = useLocation()
+  const { state } = useSidebar()
+  const isCollapsed = state === 'collapsed'
+
+  const logsOpen = useValue('logsOpen')
+  const logsUnread = useValue('logsUnread')
+
+  const toggleLogsOpen = useSetPartialValuesCallback((_, store) => ({
+    logsOpen: !store.getValue('logsOpen'),
+    logsUnread: false,
+  }))
+
   const isHomeActive = location.pathname === '/'
   const isOutputActive = location.pathname === '/output'
   const isSettingsActive = location.pathname === '/settings'
@@ -29,7 +36,7 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
-          <SidebarMenuButton size="sm" asChild>
+          <SidebarMenuButton size="sm" asChild tooltip={isCollapsed ? 'Image Studio' : undefined}>
             <div className="flex items-center gap-2 px-2 py-1">
               <AppWindowIcon className="h-5 w-5 shrink-0" />
               <span className="text-lg font-semibold group-data-[collapsible=icon]:hidden">
@@ -45,7 +52,11 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isHomeActive} tooltip="compress images">
+                <SidebarMenuButton
+                  asChild
+                  isActive={isHomeActive}
+                  tooltip={isCollapsed ? 'Compression' : undefined}
+                >
                   <Link to="/">
                     <ImageDown className="h-4 w-4" />
                     <span>Compression</span>
@@ -53,7 +64,11 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isOutputActive}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isOutputActive}
+                  tooltip={isCollapsed ? 'Output' : undefined}
+                >
                   <Link to="/output">
                     <Folder className="h-4 w-4" />
                     <span>Output</span>
@@ -68,7 +83,11 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton asChild isActive={isSettingsActive}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isSettingsActive}
+                  tooltip={isCollapsed ? 'General' : undefined}
+                >
                   <Link to="/settings">
                     <SettingsIcon className="h-4 w-4" />
                     <span>General</span>
@@ -85,17 +104,15 @@ export function AppSidebar({ onToggleLogs, logsOpen }: AppSidebarProps) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="sm"
-              onClick={onToggleLogs}
+              onClick={toggleLogsOpen}
               isActive={logsOpen}
-              tooltip="Toggle log panel"
+              tooltip={isCollapsed ? 'Toggle log panel' : undefined}
             >
+              {logsUnread && !logsOpen && (
+                <span className="bg-destructive absolute -top-1 -left-1 h-2.5 w-2.5 rounded-full" />
+              )}
               <TerminalIcon className="h-4 w-4 shrink-0" />
-              <span className="text-xs">Logs</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="sm" asChild>
-              <UpdateChecker className="ml-auto" />
+              <span>logs</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

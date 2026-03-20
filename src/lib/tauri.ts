@@ -2,6 +2,13 @@ import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
 import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener'
 
+export interface UpscaledVersion {
+  scale: number
+  filepath: string
+  size: number | null
+  model: string | null
+}
+
 export interface Image {
   id: number
   filename: string
@@ -12,6 +19,7 @@ export interface Image {
   height: number | null
   compressed_filepath?: string | null
   compressed_size?: number | null
+  upscaled_versions?: UpscaledVersion[] // JSON parsed from backend
 }
 
 export interface AddImageData {
@@ -102,6 +110,10 @@ export async function syncDatabase(): Promise<number> {
   return invoke<number>('sync_database')
 }
 
+export async function checkDbHealth(): Promise<number> {
+  return invoke<number>('check_db_health')
+}
+
 export async function deleteImagesByIds(ids: number[]): Promise<void> {
   return invoke<void>('delete_images_by_ids', { ids })
 }
@@ -122,4 +134,45 @@ export async function importImagesBulk(filepaths: string[]): Promise<ImportResul
 
 export async function compressImagesByIds(ids: number[], quality: number): Promise<number> {
   return invoke<number>('compress_images_by_ids', { ids, quality })
+}
+
+export interface UpscaleSettings {
+  model: string
+  gpu_enabled: boolean
+  models_dir: string
+}
+
+export interface ModelStatus {
+  name: string
+  downloaded: boolean
+  path: string
+  size: number | null
+}
+
+export async function getUpscaleSettings(): Promise<UpscaleSettings> {
+  return invoke<UpscaleSettings>('get_upscale_settings')
+}
+
+export async function setUpscaleSettings(model: string, gpuEnabled: boolean): Promise<void> {
+  return invoke<void>('set_upscale_settings', { model, gpuEnabled })
+}
+
+export async function getModelStatus(model: string): Promise<ModelStatus> {
+  return invoke<ModelStatus>('get_model_status', { model })
+}
+
+export async function downloadModel(model: string): Promise<string> {
+  return invoke<string>('download_model', { model })
+}
+
+export async function upscaleImagesByIds(
+  ids: number[],
+  scale: number,
+  model: string
+): Promise<number> {
+  return invoke<number>('upscale_images_by_ids', { ids, scale, model })
+}
+
+export async function getAllUpscaledImages(): Promise<Image[]> {
+  return invoke<Image[]>('get_all_upscaled_images')
 }

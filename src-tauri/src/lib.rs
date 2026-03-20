@@ -4,10 +4,14 @@ mod crud;
 use db::{get_db_url, init_db, get_setting as db_get_setting, set_setting as db_set_setting};
 use tauri_plugin_log::{Target, TargetKind};
 
-use crud::images::{get_all_images, get_all_compressed_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, sync_database, get_image_metadata};
+use crud::images::{get_all_images, get_all_compressed_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, sync_database, get_image_metadata, check_db_health};
 use crud::notifications::{get_all_notifications, add_notification, mark_notification_read, delete_notification, mark_all_notifications_read, clear_all_notifications};
 use crud::selections::{get_selections, set_selections, add_selection, remove_selection, clear_selections};
 use crud::compression::compress_images_by_ids;
+use crud::upscaling::{
+    upscale_images_by_ids, get_all_upscaled_images, get_model_status, 
+    download_model, get_upscale_settings, set_upscale_settings
+};
 use sqlx::SqlitePool;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, State};
@@ -102,6 +106,7 @@ pub fn run() {
             delete_image,
             delete_images_by_ids,
             sync_database,
+            check_db_health,
             get_image_metadata,
             get_all_notifications,
             add_notification,
@@ -114,7 +119,13 @@ pub fn run() {
             add_selection,
             remove_selection,
             clear_selections,
-            compress_images_by_ids
+            compress_images_by_ids,
+            upscale_images_by_ids,
+            get_all_upscaled_images,
+            get_model_status,
+            download_model,
+            get_upscale_settings,
+            set_upscale_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

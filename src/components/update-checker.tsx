@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { check } from '@tauri-apps/plugin-updater'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { getSetting } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import { getVersion } from '@tauri-apps/api/app'
 import { Download, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Progress } from '@/components/ui/progress'
 
-interface UpdateCheckerProps {
-  className?: string
-}
-
-const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
+export default function UpdateChecker() {
   // Update checking state
   const [isLoading, setIsLoading] = useState(true)
   const [isChecking, setIsChecking] = useState(false)
@@ -77,6 +77,7 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
     }
 
     checkForUpdates()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [updateChecksEnabled, isLoading])
 
   // Check for updates function
@@ -169,27 +170,21 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
     }
   }, [updateChecksEnabled])
 
-  // Get status text
-  const getStatusText = () => {
-    if (isLoading) return 'Loading...'
-    if (error) return 'Error'
-    if (!updateChecksEnabled) return 'Disabled'
-    if (isInstalling) {
-      if (downloadProgress > 0 && downloadProgress < 100) return `Downloading ${downloadProgress}%`
-      if (downloadProgress === 100) return 'Installing...'
-      return 'Preparing...'
-    }
-    if (isChecking) return 'Checking...'
-    if (showUpToDate) return 'Up to date'
-    if (updateAvailable) return 'Update available'
-    return 'Check for updates'
+  const isDisabled = isLoading || !updateChecksEnabled || isChecking || isInstalling
+
+  // Get status variant for badge
+  const getStatusBadgeVariant = (): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    if (isLoading || isChecking || isInstalling) return 'secondary'
+    if (error) return 'destructive'
+    if (updateAvailable) return 'default'
+    return 'outline'
   }
 
   // Get icon based on status
   const getStatusIcon = () => {
     if (isLoading || isChecking) return <Loader2 className="h-3 w-3 animate-spin" />
-    if (error) return <AlertCircle className="text-destructive h-3 w-3" />
-    if (updateAvailable) return <Download className="text-primary h-3 w-3" />
+    if (error) return <AlertCircle className="h-3 w-3" />
+    if (updateAvailable) return <Download className="h-3 w-3" />
     if (isInstalling) return <Loader2 className="h-3 w-3 animate-spin" />
     return <CheckCircle className="h-3 w-3 text-emerald-500" />
   }
@@ -204,50 +199,61 @@ const UpdateChecker: React.FC<UpdateCheckerProps> = ({ className = '' }) => {
     return `v${appVersion} - Click to check for updates`
   }
 
-  const isDisabled = isLoading || !updateChecksEnabled || isChecking || isInstalling
-  const isClickable = !isDisabled && (updateAvailable || (!isChecking && !showUpToDate))
+  const handleClick = () => {
+    if (updateAvailable) {
+      installUpdate()
+    } else {
+      handleManualUpdateCheck()
+    }
+  }
+
+  // Get badge text
+  const getBadgeText = () => {
+    if (isLoading) return '...'
+    if (error) return 'Error'
+    if (!updateChecksEnabled) return 'Off'
+    if (isInstalling && downloadProgress > 0 && downloadProgress < 100)
+      return `${downloadProgress}%`
+    if (isInstalling && downloadProgress === 100) return 'Installing...'
+    if (!isInstalling && !isLoading && !error && !isChecking && showUpToDate) return 'Up to date'
+    if (!isInstalling && !isLoading && !error && !isChecking && updateAvailable) return 'Update'
+    if (!isInstalling && !isLoading && !error && !isChecking && !showUpToDate && !updateAvailable)
+      return 'Check'
+    if (isChecking) return '...'
+    return 'Check'
+  }
 
   return (
-    <div className={`flex flex-col gap-0.5 ${className}`}>
-      {/* Version line - always visible */}
-      <span className="text-muted-foreground/60 px-1 text-[10px]" title={getTooltipText()}>
-        v{appVersion || '0.0.0'}
-      </span>
+    <Tooltip>
+      <div className="flex items-center gap-1">
+        {/* Version line - always visible */}
+        <span className="text-muted-foreground/60 text-[10px]">v{appVersion || '0.0.0'}</span>
+        {/* Status line */}
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-auto justify-start gap-1.5 px-1 py-0.5"
+            disabled={isDisabled}
+            onClick={handleClick}
+          >
+            {getStatusIcon()}
+            <Badge variant={getStatusBadgeVariant()} className="h-5 px-1.5 text-[10px]">
+              {getBadgeText()}
+            </Badge>
+          </Button>
+        </TooltipTrigger>
 
-      {/* Status line */}
-      {isClickable ? (
-        <button
-          onClick={updateAvailable ? installUpdate : handleManualUpdateCheck}
-          disabled={isDisabled}
-          className="text-muted-foreground hover:text-foreground flex items-center gap-1.5 px-1 text-xs transition-colors disabled:opacity-50"
-          title={getTooltipText()}
-        >
-          {getStatusIcon()}
-          <span className="max-w-[80px] truncate">{getStatusText()}</span>
-        </button>
-      ) : (
-        <div
-          className="text-muted-foreground flex items-center gap-1.5 px-1 text-xs"
-          title={getTooltipText()}
-        >
-          {getStatusIcon()}
-          <span className="max-w-[80px] truncate">{getStatusText()}</span>
-        </div>
-      )}
+        {/* Progress bar */}
+        {isInstalling && downloadProgress > 0 && downloadProgress < 100 && (
+          <Progress value={downloadProgress} className="h-1" />
+        )}
 
-      {/* Progress bar */}
-      {isInstalling && downloadProgress > 0 && downloadProgress < 100 && (
-        <div className="w-full">
-          <div className="bg-muted/50 h-1 overflow-hidden rounded">
-            <div
-              className="bg-primary h-1 rounded transition-all duration-300"
-              style={{ width: `${downloadProgress}%` }}
-            />
-          </div>
-        </div>
-      )}
-    </div>
+        {/* Tooltip content */}
+        <TooltipContent side="top" sideOffset={4}>
+          <p>{getTooltipText()}</p>
+        </TooltipContent>
+      </div>
+    </Tooltip>
   )
 }
-
-export default UpdateChecker

@@ -9,6 +9,10 @@ export const tablesSchema = {
     progress: { type: 'number' },
     message: { type: 'string' },
   },
+  upscalings: {
+    progress: { type: 'number' },
+    message: { type: 'string' },
+  },
   logs: {
     level: { type: 'number' },
     message: { type: 'string' },
@@ -18,6 +22,9 @@ export const tablesSchema = {
 
 export const valuesSchema = {
   version: { type: 'string', default: '0.1.0' },
+  logsOpen: { type: 'boolean', default: false },
+  logsUnread: { type: 'boolean', default: false },
+  dbNeedsSync: { type: 'boolean', default: false },
 } as const
 
 export type AppStore = Store<[typeof tablesSchema, typeof valuesSchema]>
@@ -82,4 +89,7 @@ export const {
   ResultCellProps,
   ResultCellView,
   ResultRowView,
+  useSetRowCallback,
+  useSortedRowIds,
+  useSetValueCallback,
 } = UiReactWithSchemas

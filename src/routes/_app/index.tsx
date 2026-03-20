@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
-import { ImageTools } from '@/components/image-tools'
 import { ImageGrid } from '@/components/image-grid'
 import {
   getAllImages,
@@ -9,6 +8,8 @@ import {
   selectFiles,
   importImagesBulk,
   compressImagesByIds,
+  upscaleImagesByIds,
+  checkDbHealth,
   type Image,
 } from '@/lib/tauri'
 import {
@@ -20,12 +21,15 @@ import {
   clearSelections,
 } from '@/lib/notifications'
 import { error as logError } from '@/lib/logger'
+import { ImageTools } from '@/components/image-tools'
+import { useSetValueCallback } from '@/schema/tinybase-schema'
 
 export const Route = createFileRoute('/_app/')({
   loader: async () => {
     const [images, selectedIds] = await Promise.all([getAllImages(), getSelections()])
     return { images, selectedIds }
   },
+  gcTime: 0,
   staleTime: 0,
   component: IndexPage,
 })
@@ -36,6 +40,19 @@ function IndexPage() {
   const [images, setImages] = useState<Image[]>(loaderData.images)
   const [selectedIds, setSelectedIds] = useState<number[]>(loaderData.selectedIds)
   const [isImporting, setIsImporting] = useState(false)
+
+  const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
+
+  // Check DB health on mount to detect orphaned records
+  useEffect(() => {
+    checkDbHealth()
+      .then((orphanCount) => {
+        if (orphanCount > 0) {
+          setDbNeedsSync()
+        }
+      })
+      .catch((err) => logError(`Failed to check DB health: ${err}`))
+  }, [setDbNeedsSync])
 
   useEffect(() => {
     setImages(loaderData.images)
@@ -152,8 +169,23 @@ function IndexPage() {
     }
   }, [])
 
+  const handleUpscaleSelected = useCallback(async (ids: number[], scale: number, model: string) => {
+    try {
+      const count = ids.length
+      await upscaleImagesByIds(ids, scale, model)
+      const updated = await getAllImages()
+      setImages(updated)
+      await addNotification({
+        message: `Upscaled ${count} image${count > 1 ? 's' : ''} with ${model}`,
+        status: 'success',
+      })
+    } catch (err) {
+      logError(`Failed to upscale images: ${err}`)
+    }
+  }, [])
+
   return (
-    <div className="relative flex flex-1 flex-col">
+    <>
       {isImporting && (
         <div className="bg-background/80 absolute inset-0 z-50 flex items-center justify-center">
           <div className="flex flex-col items-center gap-3">
@@ -169,6 +201,7 @@ function IndexPage() {
         onImport={handleImport}
         onDeleteSelected={handleDeleteSelected}
         onCompressSelected={handleCompressSelected}
+        onUpscaleSelected={handleUpscaleSelected}
         isImporting={isImporting}
       />
       <ImageGrid
@@ -179,6 +212,6 @@ function IndexPage() {
         onImport={handleImport}
         onDrop={handleDrop}
       />
-    </div>
+    </>
   )
 }

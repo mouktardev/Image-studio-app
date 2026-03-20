@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import {
   initDatabase,
@@ -9,6 +9,11 @@ import {
   selectFolder,
   getDbPath,
   syncDatabase,
+  getUpscaleSettings,
+  setUpscaleSettings as saveUpscaleSettings,
+  getModelStatus,
+  downloadModel,
+  type UpscaleSettings,
 } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
@@ -16,6 +21,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   FolderOpenIcon,
   FolderIcon,
@@ -25,15 +38,25 @@ import {
   Sun,
   Moon,
   Monitor,
+  Download,
+  Cpu,
+  Zap,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTheme } from '@/components/theme-provider'
+import { formatBytes } from '@/lib/utils'
+
+const MODEL_SIZES: Record<string, number> = {
+  'realesrgan-x2': 54 * 1024 * 1024, // Swin2SR-classical-sr-x2-64: ~54 MB
+  'realesrgan-x4': 54 * 1024 * 1024, // swin2SR-realworld-sr-x4: ~54 MB
+}
 
 export const Route = createFileRoute('/_app/settings')({
   component: SettingsPage,
 })
 
 function SettingsPage() {
+  const router = useRouter()
   const { theme, setTheme } = useTheme()
   const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
   const [outputPath, setOutputPath] = useState<string>('')
@@ -42,11 +65,31 @@ function SettingsPage() {
   const [isInitializing, setIsInitializing] = useState(false)
   const [isChangingFolder, setIsChangingFolder] = useState(false)
   const [updateChecksEnabled, setUpdateChecksEnabled] = useState(true)
+  const [upscaleSettings, setUpscaleSettings] = useState<UpscaleSettings | null>(null)
+  const [modelStatus, setModelStatus] = useState<{
+    name: string
+    downloaded: boolean
+    path: string
+    size: number | null
+  } | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
 
   useEffect(() => {
     loadSettings()
     loadUpdateCheckSetting()
+    loadUpscaleSettings()
   }, [])
+
+  async function loadUpscaleSettings() {
+    try {
+      const settings = await getUpscaleSettings()
+      setUpscaleSettings(settings)
+      const status = await getModelStatus(settings.model)
+      setModelStatus(status)
+    } catch (err) {
+      logError(`Failed to load upscale settings: ${err}`)
+    }
+  }
 
   async function loadUpdateCheckSetting() {
     try {
@@ -135,178 +178,318 @@ function SettingsPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-2xl px-3 py-8">
-      <h1 className="mb-6 text-3xl font-bold">Settings</h1>
+    <section className="customScrollStyle relative h-full max-h-[calc(100vh-67px)]">
+      <div className="mx-auto max-w-2xl px-3 py-8">
+        <h1 className="mb-6 text-3xl font-bold">Settings</h1>
 
-      {/* Database Status */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Database Status</CardTitle>
-              <CardDescription>
-                Manage your SQLite database and check for orphaned files
-              </CardDescription>
-            </div>
-            {isInitialized !== null && (
-              <Badge variant={isInitialized ? 'default' : 'destructive'}>
-                {isInitialized ? 'Initialized' : 'Not Initialized'}
-              </Badge>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {!isInitialized && (
-            <Button onClick={handleInitDatabase} disabled={isInitializing}>
-              {isInitializing ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Initializing...
-                </>
-              ) : (
-                'Initialize Database'
+        {/* Database Status */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Database Status</CardTitle>
+                <CardDescription>
+                  Manage your SQLite database and check for orphaned files
+                </CardDescription>
+              </div>
+              {isInitialized !== null && (
+                <Badge variant={isInitialized ? 'default' : 'destructive'}>
+                  {isInitialized ? 'Initialized' : 'Not Initialized'}
+                </Badge>
               )}
-            </Button>
-          )}
-          {isInitialized && (
-            <div className="space-y-4">
-              <p className="text-muted-foreground text-sm">Database is ready to use.</p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={handleRevealDbFolder}>
-                  <EyeIcon className="mr-2 h-4 w-4" />
-                  Reveal Database Folder
-                </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {!isInitialized && (
+              <Button onClick={handleInitDatabase} disabled={isInitializing}>
+                {isInitializing ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Initializing...
+                  </>
+                ) : (
+                  'Initialize Database'
+                )}
+              </Button>
+            )}
+            {isInitialized && (
+              <div className="space-y-4">
+                <p className="text-muted-foreground text-sm">Database is ready to use.</p>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={handleRevealDbFolder}>
+                    <EyeIcon className="mr-2 h-4 w-4" />
+                    Reveal Database Folder
+                  </Button>
 
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const deletedCount = await syncDatabase()
+                        if (deletedCount > 0) {
+                          toast.success(`Cleaned up ${deletedCount} orphaned records.`)
+                        } else {
+                          toast.info('Database is perfectly in sync with filesystem.')
+                        }
+                        // Invalidate router cache to refresh all route loaders
+                        await router.invalidate()
+                      } catch (err) {
+                        logError(`Failed to sync database: ${err}`)
+                        toast.error('Failed to sync database')
+                      }
+                    }}
+                  >
+                    <DatabaseZap className="mr-2 h-4 w-4" />
+                    Sync / Clean DB
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Separator className="my-6" />
+
+        {/* Output Folder */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Output Folder</CardTitle>
+            <CardDescription>Configure where processed images will be saved</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-2">
+              <FolderIcon className="text-muted-foreground h-5 w-5" />
+              <code className="bg-muted relative flex-1 overflow-x-auto rounded px-[0.3rem] py-[0.2rem] font-mono text-sm">
+                {outputPath || 'No folder selected'}
+              </code>
+            </div>
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleRevealFolder} disabled={!outputPath}>
+                <EyeIcon className="mr-2 h-4 w-4" />
+                Reveal in Explorer
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleChangeFolder}
+                disabled={isChangingFolder || !isInitialized}
+              >
+                <FolderOpenIcon className="mr-2 h-4 w-4" />
+                {isChangingFolder ? 'Changing...' : 'Change Folder'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Separator className="my-6" />
+
+        {/* Update Settings */}
+        <Card className="my-4">
+          <CardHeader>
+            <CardTitle>Updates</CardTitle>
+            <CardDescription>Configure application update behavior</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="update-checks"
+                checked={updateChecksEnabled}
+                onCheckedChange={(checked) => {
+                  const value = Boolean(checked)
+                  setUpdateChecksEnabled(value)
+                  setSetting('update_checks_enabled', value ? 'true' : 'false').catch((err) => {
+                    logError(`Failed to save update check setting: ${err}`)
+                  })
+                }}
+              />
+              <label
+                htmlFor="update-checks"
+                className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Enable automatic update checks
+              </label>
+            </div>
+            <p className="text-muted-foreground mt-2 text-sm">
+              When enabled, the app will periodically check for updates
+            </p>
+          </CardContent>
+        </Card>
+
+        <Separator className="my-6" />
+
+        {/* Theme */}
+        <Card className="my-4">
+          <CardHeader>
+            <CardTitle>Appearance</CardTitle>
+            <CardDescription>Choose how the application looks</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2">
+              <Button
+                variant={theme === 'light' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTheme('light')}
+              >
+                <Sun className="mr-2 h-4 w-4" />
+                Light
+              </Button>
+              <Button
+                variant={theme === 'dark' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTheme('dark')}
+              >
+                <Moon className="mr-2 h-4 w-4" />
+                Dark
+              </Button>
+              <Button
+                variant={theme === 'system' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setTheme('system')}
+              >
+                <Monitor className="mr-2 h-4 w-4" />
+                System
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Separator className="my-6" />
+
+        {/* AI Upscaling */}
+        <Card className="my-4">
+          <CardHeader>
+            <CardTitle>AI Upscaling</CardTitle>
+            <CardDescription>Configure AI-powered image upscaling settings</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label>Model</Label>
+              <Select
+                value={upscaleSettings?.model || 'realesrgan-x4'}
+                onValueChange={async (model) => {
+                  const gpu = upscaleSettings?.gpu_enabled || false
+                  try {
+                    await saveUpscaleSettings(model, gpu)
+                    setUpscaleSettings({ ...upscaleSettings!, model, gpu_enabled: gpu })
+                    const status = await getModelStatus(model)
+                    setModelStatus(status)
+                  } catch (err) {
+                    logError(`Failed to save upscale model: ${err}`)
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="realesrgan-x2">
+                    <span>Swin2SR Classical x2</span>
+                    <span className="text-muted-foreground ml-2 text-xs">(~54 MB)</span>
+                  </SelectItem>
+                  <SelectItem value="realesrgan-x4">
+                    <span>Swin2SR Real-world x4</span>
+                    <span className="text-muted-foreground ml-2 text-xs">(~54 MB)</span>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Device</Label>
+              <div className="flex gap-2">
                 <Button
-                  variant="secondary"
+                  variant={!upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
                   size="sm"
                   onClick={async () => {
+                    const model = upscaleSettings?.model || 'realesrgan-x4'
                     try {
-                      const deletedCount = await syncDatabase()
-                      if (deletedCount > 0) {
-                        toast.success(`Cleaned up ${deletedCount} orphaned records.`)
-                      } else {
-                        toast.info('Database is perfectly in sync with filesystem.')
-                      }
+                      await saveUpscaleSettings(model, false)
+                      setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: false })
                     } catch (err) {
-                      logError(`Failed to sync database: ${err}`)
-                      toast.error('Failed to sync database')
+                      logError(`Failed to save GPU setting: ${err}`)
                     }
                   }}
                 >
-                  <DatabaseZap className="mr-2 h-4 w-4" />
-                  Sync / Clean DB
+                  <Cpu className="mr-2 h-4 w-4" />
+                  CPU
+                </Button>
+                <Button
+                  variant={upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={async () => {
+                    const model = upscaleSettings?.model || 'realesrgan-x4'
+                    try {
+                      await saveUpscaleSettings(model, true)
+                      setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: true })
+                    } catch (err) {
+                      logError(`Failed to save GPU setting: ${err}`)
+                    }
+                  }}
+                >
+                  <Zap className="mr-2 h-4 w-4" />
+                  GPU
                 </Button>
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
 
-      <Separator className="my-6" />
-
-      {/* Output Folder */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Output Folder</CardTitle>
-          <CardDescription>Configure where processed images will be saved</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-2">
-            <FolderIcon className="text-muted-foreground h-5 w-5" />
-            <code className="bg-muted relative flex-1 overflow-x-auto rounded px-[0.3rem] py-[0.2rem] font-mono text-sm">
-              {outputPath || 'No folder selected'}
-            </code>
-          </div>
-
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={handleRevealFolder} disabled={!outputPath}>
-              <EyeIcon className="mr-2 h-4 w-4" />
-              Reveal in Explorer
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleChangeFolder}
-              disabled={isChangingFolder || !isInitialized}
-            >
-              <FolderOpenIcon className="mr-2 h-4 w-4" />
-              {isChangingFolder ? 'Changing...' : 'Change Folder'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Separator className="my-6" />
-
-      {/* Update Settings */}
-      <Card className="my-4">
-        <CardHeader>
-          <CardTitle>Updates</CardTitle>
-          <CardDescription>Configure application update behavior</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center gap-3">
-            <Checkbox
-              id="update-checks"
-              checked={updateChecksEnabled}
-              onCheckedChange={(checked) => {
-                const value = Boolean(checked)
-                setUpdateChecksEnabled(value)
-                setSetting('update_checks_enabled', value ? 'true' : 'false').catch((err) => {
-                  logError(`Failed to save update check setting: ${err}`)
-                })
-              }}
-            />
-            <label
-              htmlFor="update-checks"
-              className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-            >
-              Enable automatic update checks
-            </label>
-          </div>
-          <p className="text-muted-foreground mt-2 text-sm">
-            When enabled, the app will periodically check for updates
-          </p>
-        </CardContent>
-      </Card>
-
-      <Separator className="my-6" />
-
-      {/* Theme */}
-      <Card className="my-4">
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>Choose how the application looks</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Button
-              variant={theme === 'light' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTheme('light')}
-            >
-              <Sun className="mr-2 h-4 w-4" />
-              Light
-            </Button>
-            <Button
-              variant={theme === 'dark' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTheme('dark')}
-            >
-              <Moon className="mr-2 h-4 w-4" />
-              Dark
-            </Button>
-            <Button
-              variant={theme === 'system' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setTheme('system')}
-            >
-              <Monitor className="mr-2 h-4 w-4" />
-              System
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+            <div className="space-y-2">
+              <Label>Model Status</Label>
+              <div className="flex items-center gap-2">
+                <Badge variant={modelStatus?.downloaded ? 'default' : 'secondary'}>
+                  {modelStatus?.downloaded ? 'Downloaded' : 'Not Downloaded'}
+                </Badge>
+                <span className="text-muted-foreground text-xs">
+                  {modelStatus?.downloaded && modelStatus?.size
+                    ? formatBytes(modelStatus.size)
+                    : formatBytes(MODEL_SIZES[upscaleSettings?.model || 'realesrgan-x4'] || 0)}
+                </span>
+                {modelStatus?.downloaded && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      if (modelStatus?.path) {
+                        revealInExplorer(modelStatus.path).catch((err) =>
+                          logError(`Failed to reveal model: ${err}`)
+                        )
+                      }
+                    }}
+                  >
+                    <EyeIcon className="mr-2 h-4 w-4" />
+                    Reveal
+                  </Button>
+                )}
+                {!modelStatus?.downloaded && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={isDownloading}
+                    onClick={async () => {
+                      setIsDownloading(true)
+                      try {
+                        const model = upscaleSettings?.model || 'realesrgan-x4'
+                        await downloadModel(model)
+                        const status = await getModelStatus(model)
+                        setModelStatus(status)
+                        toast.success('Model downloaded successfully')
+                      } catch (err) {
+                        logError(`Failed to download model: ${err}`)
+                        toast.error('Failed to download model')
+                      } finally {
+                        setIsDownloading(false)
+                      }
+                    }}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {isDownloading ? 'Downloading...' : 'Download'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
   )
 }

@@ -15,11 +15,15 @@ import { createQueries, createStore } from 'tinybase/with-schemas'
 import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { setupLogger, attachGlobalLogListener } from '@/lib/logger'
+import { checkDbHealth } from '@/lib/tauri'
 import { useEffect } from 'react'
 
 setupLogger()
-// Create a new router instance
-const router = createRouter({ routeTree })
+// Create a new router instance with scroll restoration enabled
+const router = createRouter({
+  routeTree,
+  scrollRestoration: true,
+})
 
 // Register the router instance for type safety
 declare module '@tanstack/react-router' {
@@ -28,16 +32,22 @@ declare module '@tanstack/react-router' {
   }
 }
 export function App() {
-  const store = useCreateStore(() =>
-    createStore()
-      .setSchema(tablesSchema, valuesSchema)
-      .setTable('clients', { 0: { name: 'David' } })
-  )
+  const store = useCreateStore(() => createStore().setSchema(tablesSchema, valuesSchema))
   const queries = useCreateQueries(store, createQueries, [])
 
   useEffect(() => {
     if (store) {
       const promise = attachGlobalLogListener(store)
+
+      // Check DB health on startup
+      checkDbHealth()
+        .then((orphanCount) => {
+          if (orphanCount > 0) {
+            store.setValue('dbNeedsSync', true)
+          }
+        })
+        .catch(console.error)
+
       return () => {
         promise.then((detach) => detach())
       }
@@ -46,12 +56,12 @@ export function App() {
 
   return (
     <ThemeProvider defaultTheme="dark" storageKey="theme">
-      <TooltipProvider>
-        <TinyBaseProvider store={store} queries={queries}>
+      <TinyBaseProvider store={store} queries={queries}>
+        <TooltipProvider>
           <RouterProvider router={router} />
           <Toaster />
-        </TinyBaseProvider>
-      </TooltipProvider>
+        </TooltipProvider>
+      </TinyBaseProvider>
     </ThemeProvider>
   )
 }
