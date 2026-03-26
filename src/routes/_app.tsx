@@ -5,6 +5,7 @@ import { NotificationBell } from '@/components/notification-bell'
 import { LogPanel } from '@/components/log-panel'
 import { CompressionListener } from '@/components/compression-listener'
 import { UpscalingListener } from '@/components/upscaling-listener'
+import { BgRemovalListener } from '@/components/bg-removal-listener'
 import { useValue } from '@/schema/tinybase-schema'
 import UpdateChecker from '@/components/update-checker'
 import { DbSyncButton } from '@/components/db-sync-button'
@@ -20,6 +21,7 @@ function RouteComponent() {
     <SidebarProvider defaultOpen style={{ '--sidebar-width': '14rem' } as React.CSSProperties}>
       <CompressionListener />
       <UpscalingListener />
+      <BgRemovalListener />
       <AppSidebar />
       <SidebarInset className="flex flex-col">
         <header className="bg-sidebar flex h-10 shrink-0 items-center justify-between gap-4 border-b px-4">

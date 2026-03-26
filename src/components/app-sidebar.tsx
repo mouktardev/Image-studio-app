@@ -12,8 +12,9 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { AppWindowIcon, ImageDown, SettingsIcon, TerminalIcon, Folder } from 'lucide-react'
+import { ImageDown, SettingsIcon, TerminalIcon, Folder } from 'lucide-react'
 import { useValue, useSetPartialValuesCallback } from '@/schema/tinybase-schema'
+import packageJson from '../../package.json'
 
 export function AppSidebar() {
   const location = useLocation()
@@ -36,12 +37,21 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <SidebarMenu>
-          <SidebarMenuButton size="sm" asChild tooltip={isCollapsed ? 'Image Studio' : undefined}>
+          <SidebarMenuButton
+            size="sm"
+            asChild
+            tooltip={isCollapsed ? `Image Studio v${packageJson.version}` : undefined}
+          >
             <div className="flex items-center gap-2 px-2 py-1">
-              <AppWindowIcon className="h-5 w-5 shrink-0" />
-              <span className="text-lg font-semibold group-data-[collapsible=icon]:hidden">
-                Image studio
-              </span>
+              <img
+                src="/app-icon.png"
+                alt="Image Studio"
+                className="h-6 w-6 shrink-0 rounded-md object-cover"
+              />
+              <div className="flex flex-col group-data-[collapsible=icon]:hidden">
+                <span className="text-sm leading-tight font-semibold">Image studio</span>
+                <span className="text-muted-foreground text-[10px]">v{packageJson.version}</span>
+              </div>
             </div>
           </SidebarMenuButton>
         </SidebarMenu>

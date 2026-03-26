@@ -13,6 +13,8 @@ import {
   setUpscaleSettings as saveUpscaleSettings,
   getModelStatus,
   downloadModel,
+  getBgRemovalModelStatus,
+  downloadBgRemovalModel,
   type UpscaleSettings,
 } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
@@ -41,6 +43,8 @@ import {
   Download,
   Cpu,
   Zap,
+  Scissors,
+  Maximize2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTheme } from '@/components/theme-provider'
@@ -50,6 +54,8 @@ const MODEL_SIZES: Record<string, number> = {
   'realesrgan-x2': 54 * 1024 * 1024, // Swin2SR-classical-sr-x2-64: ~54 MB
   'realesrgan-x4': 54 * 1024 * 1024, // swin2SR-realworld-sr-x4: ~54 MB
 }
+
+const BG_REMOVAL_MODEL_SIZE = 176 * 1024 * 1024 // BRIA RMBG-1.4 ONNX: ~176 MB
 
 export const Route = createFileRoute('/_app/settings')({
   component: SettingsPage,
@@ -65,6 +71,8 @@ function SettingsPage() {
   const [isInitializing, setIsInitializing] = useState(false)
   const [isChangingFolder, setIsChangingFolder] = useState(false)
   const [updateChecksEnabled, setUpdateChecksEnabled] = useState(true)
+
+  // AI Image Processing - Upscale
   const [upscaleSettings, setUpscaleSettings] = useState<UpscaleSettings | null>(null)
   const [modelStatus, setModelStatus] = useState<{
     name: string
@@ -72,12 +80,22 @@ function SettingsPage() {
     path: string
     size: number | null
   } | null>(null)
-  const [isDownloading, setIsDownloading] = useState(false)
+  const [isDownloadingUpscale, setIsDownloadingUpscale] = useState(false)
+
+  // AI Image Processing - Background Removal
+  const [bgRemovalModelStatus, setBgRemovalModelStatus] = useState<{
+    name: string
+    downloaded: boolean
+    path: string
+    size: number | null
+  } | null>(null)
+  const [isDownloadingBgRemoval, setIsDownloadingBgRemoval] = useState(false)
 
   useEffect(() => {
     loadSettings()
     loadUpdateCheckSetting()
     loadUpscaleSettings()
+    loadBgRemovalModelStatus()
   }, [])
 
   async function loadUpscaleSettings() {
@@ -88,6 +106,15 @@ function SettingsPage() {
       setModelStatus(status)
     } catch (err) {
       logError(`Failed to load upscale settings: ${err}`)
+    }
+  }
+
+  async function loadBgRemovalModelStatus() {
+    try {
+      const status = await getBgRemovalModelStatus()
+      setBgRemovalModelStatus(status)
+    } catch (err) {
+      logError(`Failed to load background removal model status: ${err}`)
     }
   }
 
@@ -356,135 +383,233 @@ function SettingsPage() {
 
         <Separator className="my-6" />
 
-        {/* AI Upscaling */}
+        {/* AI Image Processing */}
         <Card className="my-4">
           <CardHeader>
-            <CardTitle>AI Upscaling</CardTitle>
-            <CardDescription>Configure AI-powered image upscaling settings</CardDescription>
+            <CardTitle>AI Image Processing</CardTitle>
+            <CardDescription>
+              Configure AI-powered image enhancement models and device preferences
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Model</Label>
-              <Select
-                value={upscaleSettings?.model || 'realesrgan-x4'}
-                onValueChange={async (model) => {
-                  const gpu = upscaleSettings?.gpu_enabled || false
-                  try {
-                    await saveUpscaleSettings(model, gpu)
-                    setUpscaleSettings({ ...upscaleSettings!, model, gpu_enabled: gpu })
-                    const status = await getModelStatus(model)
-                    setModelStatus(status)
-                  } catch (err) {
-                    logError(`Failed to save upscale model: ${err}`)
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="realesrgan-x2">
-                    <span>Swin2SR Classical x2</span>
-                    <span className="text-muted-foreground ml-2 text-xs">(~54 MB)</span>
-                  </SelectItem>
-                  <SelectItem value="realesrgan-x4">
-                    <span>Swin2SR Real-world x4</span>
-                    <span className="text-muted-foreground ml-2 text-xs">(~54 MB)</span>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+          <CardContent className="space-y-6">
+            {/* Upscale Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Maximize2 className="text-muted-foreground h-5 w-5" />
+                <h3 className="font-semibold">Upscale</h3>
+                <span className="text-muted-foreground text-xs">
+                  Increase image resolution using AI super-resolution
+                </span>
+              </div>
 
-            <div className="space-y-2">
-              <Label>Device</Label>
-              <div className="flex gap-2">
-                <Button
-                  variant={!upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={async () => {
-                    const model = upscaleSettings?.model || 'realesrgan-x4'
-                    try {
-                      await saveUpscaleSettings(model, false)
-                      setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: false })
-                    } catch (err) {
-                      logError(`Failed to save GPU setting: ${err}`)
-                    }
-                  }}
-                >
-                  <Cpu className="mr-2 h-4 w-4" />
-                  CPU
-                </Button>
-                <Button
-                  variant={upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={async () => {
-                    const model = upscaleSettings?.model || 'realesrgan-x4'
-                    try {
-                      await saveUpscaleSettings(model, true)
-                      setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: true })
-                    } catch (err) {
-                      logError(`Failed to save GPU setting: ${err}`)
-                    }
-                  }}
-                >
-                  <Zap className="mr-2 h-4 w-4" />
-                  GPU
-                </Button>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-sm">Model</Label>
+                  <Select
+                    value={upscaleSettings?.model || 'realesrgan-x4'}
+                    onValueChange={async (model) => {
+                      const gpu = upscaleSettings?.gpu_enabled || false
+                      try {
+                        await saveUpscaleSettings(model, gpu)
+                        setUpscaleSettings({ ...upscaleSettings!, model, gpu_enabled: gpu })
+                        const status = await getModelStatus(model)
+                        setModelStatus(status)
+                      } catch (err) {
+                        logError(`Failed to save upscale model: ${err}`)
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="realesrgan-x2">
+                        <span>Swin2SR Classical x2</span>
+                        <span className="text-muted-foreground ml-2 text-xs">(~54 MB)</span>
+                      </SelectItem>
+                      <SelectItem value="realesrgan-x4">
+                        <span>Swin2SR Real-world x4</span>
+                        <span className="text-muted-foreground ml-2 text-xs">(~54 MB)</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Processing Device</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      variant={!upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={async () => {
+                        const model = upscaleSettings?.model || 'realesrgan-x4'
+                        try {
+                          await saveUpscaleSettings(model, false)
+                          setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: false })
+                        } catch (err) {
+                          logError(`Failed to save GPU setting: ${err}`)
+                        }
+                      }}
+                    >
+                      <Cpu className="mr-2 h-4 w-4" />
+                      CPU
+                    </Button>
+                    <Button
+                      variant={upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={async () => {
+                        const model = upscaleSettings?.model || 'realesrgan-x4'
+                        try {
+                          await saveUpscaleSettings(model, true)
+                          setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: true })
+                        } catch (err) {
+                          logError(`Failed to save GPU setting: ${err}`)
+                        }
+                      }}
+                    >
+                      <Zap className="mr-2 h-4 w-4" />
+                      GPU
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm">Model Status</Label>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={modelStatus?.downloaded ? 'default' : 'secondary'}>
+                      {modelStatus?.downloaded ? 'Downloaded' : 'Not Downloaded'}
+                    </Badge>
+                    <span className="text-muted-foreground text-xs">
+                      {modelStatus?.downloaded && modelStatus?.size
+                        ? formatBytes(modelStatus.size)
+                        : formatBytes(MODEL_SIZES[upscaleSettings?.model || 'realesrgan-x4'] || 0)}
+                    </span>
+                    {modelStatus?.downloaded && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (modelStatus?.path) {
+                            revealInExplorer(modelStatus.path).catch((err) =>
+                              logError(`Failed to reveal model: ${err}`)
+                            )
+                          }
+                        }}
+                      >
+                        <EyeIcon className="mr-2 h-4 w-4" />
+                        Reveal
+                      </Button>
+                    )}
+                    {!modelStatus?.downloaded && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isDownloadingUpscale}
+                        onClick={async () => {
+                          setIsDownloadingUpscale(true)
+                          try {
+                            const model = upscaleSettings?.model || 'realesrgan-x4'
+                            await downloadModel(model)
+                            const status = await getModelStatus(model)
+                            setModelStatus(status)
+                            toast.success('Model downloaded successfully')
+                          } catch (err) {
+                            logError(`Failed to download model: ${err}`)
+                            toast.error('Failed to download model')
+                          } finally {
+                            setIsDownloadingUpscale(false)
+                          }
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isDownloadingUpscale ? 'Downloading...' : 'Download'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Model Status</Label>
+            <Separator />
+
+            {/* Background Removal Section */}
+            <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <Badge variant={modelStatus?.downloaded ? 'default' : 'secondary'}>
-                  {modelStatus?.downloaded ? 'Downloaded' : 'Not Downloaded'}
-                </Badge>
+                <Scissors className="text-muted-foreground h-5 w-5" />
+                <h3 className="font-semibold">Background Removal</h3>
                 <span className="text-muted-foreground text-xs">
-                  {modelStatus?.downloaded && modelStatus?.size
-                    ? formatBytes(modelStatus.size)
-                    : formatBytes(MODEL_SIZES[upscaleSettings?.model || 'realesrgan-x4'] || 0)}
+                  AI-powered background removal (processed on CPU)
                 </span>
-                {modelStatus?.downloaded && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      if (modelStatus?.path) {
-                        revealInExplorer(modelStatus.path).catch((err) =>
-                          logError(`Failed to reveal model: ${err}`)
-                        )
-                      }
-                    }}
-                  >
-                    <EyeIcon className="mr-2 h-4 w-4" />
-                    Reveal
-                  </Button>
-                )}
-                {!modelStatus?.downloaded && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isDownloading}
-                    onClick={async () => {
-                      setIsDownloading(true)
-                      try {
-                        const model = upscaleSettings?.model || 'realesrgan-x4'
-                        await downloadModel(model)
-                        const status = await getModelStatus(model)
-                        setModelStatus(status)
-                        toast.success('Model downloaded successfully')
-                      } catch (err) {
-                        logError(`Failed to download model: ${err}`)
-                        toast.error('Failed to download model')
-                      } finally {
-                        setIsDownloading(false)
-                      }
-                    }}
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    {isDownloading ? 'Downloading...' : 'Download'}
-                  </Button>
-                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-sm">Model</Label>
+                  <Select value="bria-rmbg-1.4">
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bria-rmbg-1.4">
+                        <span>BRIA RMBG-1.4</span>
+                        <span className="text-muted-foreground ml-2 text-xs">(~176 MB)</span>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm">Model Status</Label>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={bgRemovalModelStatus?.downloaded ? 'default' : 'secondary'}>
+                      {bgRemovalModelStatus?.downloaded ? 'Downloaded' : 'Not Downloaded'}
+                    </Badge>
+                    <span className="text-muted-foreground text-xs">
+                      {bgRemovalModelStatus?.downloaded && bgRemovalModelStatus?.size
+                        ? formatBytes(bgRemovalModelStatus.size)
+                        : formatBytes(BG_REMOVAL_MODEL_SIZE)}
+                    </span>
+                    {bgRemovalModelStatus?.downloaded && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (bgRemovalModelStatus?.path) {
+                            revealInExplorer(bgRemovalModelStatus.path).catch((err) =>
+                              logError(`Failed to reveal model: ${err}`)
+                            )
+                          }
+                        }}
+                      >
+                        <EyeIcon className="mr-2 h-4 w-4" />
+                        Reveal
+                      </Button>
+                    )}
+                    {!bgRemovalModelStatus?.downloaded && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isDownloadingBgRemoval}
+                        onClick={async () => {
+                          setIsDownloadingBgRemoval(true)
+                          try {
+                            await downloadBgRemovalModel()
+                            const status = await getBgRemovalModelStatus()
+                            setBgRemovalModelStatus(status)
+                            toast.success('Model downloaded successfully')
+                          } catch (err) {
+                            logError(`Failed to download model: ${err}`)
+                            toast.error('Failed to download model')
+                          } finally {
+                            setIsDownloadingBgRemoval(false)
+                          }
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isDownloadingBgRemoval ? 'Downloading...' : 'Download'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </CardContent>

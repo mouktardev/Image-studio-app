@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useCallback, memo } from 'react'
 import {
   getAllCompressedImages,
   getAllUpscaledImages,
+  getAllBgRemovedImages,
   revealInExplorer,
   openFile,
   checkDbHealth,
@@ -18,22 +19,23 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Button } from '@/components/ui/button'
-import { FolderSearch, Archive, Maximize2, FileImage } from 'lucide-react'
+import { FolderSearch, Archive, Maximize2, FileImage, Scissors } from 'lucide-react'
 
 export const Route = createFileRoute('/_app/output')({
   loader: async () => {
-    const [compressedImages, upscaledImages] = await Promise.all([
+    const [compressedImages, upscaledImages, bgRemovedImages] = await Promise.all([
       getAllCompressedImages(),
       getAllUpscaledImages(),
+      getAllBgRemovedImages(),
     ])
-    return { compressedImages, upscaledImages }
+    return { compressedImages, upscaledImages, bgRemovedImages }
   },
   gcTime: 0,
   staleTime: 0,
   component: OutputPage,
 })
 
-type OutputType = 'all' | 'compressed' | 'upscaled'
+type OutputType = 'all' | 'compressed' | 'upscaled' | 'bg_removed'
 
 type UpscaledVersion = {
   scale: number
@@ -46,7 +48,7 @@ type OutputImage = {
   id: number
   filename: string
   filepath: string
-  resultType: 'compressed' | 'upscaled'
+  resultType: 'compressed' | 'upscaled' | 'bg_removed'
   displayFilepath: string
   displaySize: number | null
   upscaled_scale?: number
@@ -69,6 +71,7 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
 
   const isCompressed = image.resultType === 'compressed'
   const isUpscaled = image.resultType === 'upscaled'
+  const isBgRemoved = image.resultType === 'bg_removed'
 
   const handleOpen = useCallback(async () => {
     try {
@@ -126,12 +129,28 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
                   <Maximize2 className="h-2.5 w-2.5" />
                 </span>
               )}
+              {isBgRemoved && (
+                <span
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500 text-white"
+                  title="Background Removed"
+                >
+                  <Scissors className="h-2.5 w-2.5" />
+                </span>
+              )}
             </div>
 
             <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-2 py-1.5">
               <p className="truncate text-xs font-semibold text-white">{image.filename}</p>
               <div className="flex items-center justify-between text-[10px] text-white/80">
-                <span className={isUpscaled ? 'text-blue-300' : 'text-green-300'}>
+                <span
+                  className={
+                    isUpscaled
+                      ? 'text-blue-300'
+                      : isBgRemoved
+                        ? 'text-purple-300'
+                        : 'text-green-300'
+                  }
+                >
                   {image.displaySize ? formatBytes(image.displaySize) : 'Unknown'}
                 </span>
                 {isUpscaled && image.upscaled_scale && (
@@ -146,7 +165,7 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
       <ContextMenuContent>
         <ContextMenuItem onClick={handleOpen}>
           <FileImage className="mr-2 h-4 w-4" />
-          Open {isCompressed ? 'Compressed' : 'Upscaled'}
+          Open {isCompressed ? 'Compressed' : isBgRemoved ? 'Background Removed' : 'Upscaled'}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleReveal}>
           <FolderSearch className="mr-2 h-4 w-4" />
@@ -205,12 +224,25 @@ function OutputPage() {
       }
     }
 
+    const bgRemovedList: OutputImage[] = loaderData.bgRemovedImages
+      .filter((img) => img.bg_removed_filepath)
+      .map((img) => ({
+        id: img.id,
+        filename: img.filename,
+        filepath: img.bg_removed_filepath!,
+        resultType: 'bg_removed' as const,
+        displayFilepath: img.bg_removed_filepath!,
+        displaySize: img.bg_removed_size ?? null,
+      }))
+
     if (outputType === 'all') {
-      return [...compressedList, ...upscaledList]
+      return [...compressedList, ...upscaledList, ...bgRemovedList]
     } else if (outputType === 'compressed') {
       return compressedList
-    } else {
+    } else if (outputType === 'upscaled') {
       return upscaledList
+    } else {
+      return bgRemovedList
     }
   }, [loaderData, outputType])
 
@@ -226,7 +258,11 @@ function OutputPage() {
           size="sm"
           onClick={() => handleOutputTypeChange('all')}
         >
-          All ({loaderData.compressedImages.length + loaderData.upscaledImages.length})
+          All (
+          {loaderData.compressedImages.length +
+            loaderData.upscaledImages.length +
+            loaderData.bgRemovedImages.length}
+          )
         </Button>
         <Button
           variant={outputType === 'compressed' ? 'default' : 'outline'}
@@ -244,6 +280,14 @@ function OutputPage() {
           <Maximize2 className="mr-2 h-4 w-4" />
           Upscaled ({loaderData.upscaledImages.length})
         </Button>
+        <Button
+          variant={outputType === 'bg_removed' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => handleOutputTypeChange('bg_removed')}
+        >
+          <Scissors className="mr-2 h-4 w-4" />
+          BG Removed ({loaderData.bgRemovedImages.length})
+        </Button>
       </div>
 
       <section className="customScrollStyle relative h-full max-h-[calc(100vh-113px)] overflow-auto">
@@ -253,7 +297,8 @@ function OutputPage() {
               <Archive className="text-muted-foreground mx-auto h-10 w-10 opacity-20" />
               <p className="mt-2 text-sm font-medium">No processed images yet</p>
               <p className="text-muted-foreground text-xs">
-                Compress or upscale some images from the main gallery to see them here.
+                Compress, upscale, or remove backgrounds from images in the main gallery to see them
+                here.
               </p>
             </div>
           </div>

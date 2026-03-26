@@ -513,6 +513,8 @@ pub async fn get_all_upscaled_images(
             compressed_filepath: None,
             compressed_size: None,
             upscaled_versions: upscaled_json,
+            bg_removed_filepath: None,
+            bg_removed_size: None,
         }
     }).collect();
 

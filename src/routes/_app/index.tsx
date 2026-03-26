@@ -9,6 +9,7 @@ import {
   importImagesBulk,
   compressImagesByIds,
   upscaleImagesByIds,
+  removeBackgroundByIds,
   checkDbHealth,
   type Image,
 } from '@/lib/tauri'
@@ -184,6 +185,21 @@ function IndexPage() {
     }
   }, [])
 
+  const handleRemoveBackgroundSelected = useCallback(async (ids: number[]) => {
+    try {
+      const count = ids.length
+      await removeBackgroundByIds(ids)
+      const updated = await getAllImages()
+      setImages(updated)
+      await addNotification({
+        message: `Removed background from ${count} image${count > 1 ? 's' : ''}`,
+        status: 'success',
+      })
+    } catch (err) {
+      logError(`Failed to remove backgrounds: ${err}`)
+    }
+  }, [])
+
   return (
     <>
       {isImporting && (
@@ -202,6 +218,7 @@ function IndexPage() {
         onDeleteSelected={handleDeleteSelected}
         onCompressSelected={handleCompressSelected}
         onUpscaleSelected={handleUpscaleSelected}
+        onRemoveBackgroundSelected={handleRemoveBackgroundSelected}
         isImporting={isImporting}
       />
       <ImageGrid

@@ -19,6 +19,10 @@ pub struct Image {
     pub compressed_size: Option<i64>,
     #[serde(default)]
     pub upscaled_versions: String,  // JSON array of upscaled versions
+    #[serde(default)]
+    pub bg_removed_filepath: Option<String>,
+    #[serde(default)]
+    pub bg_removed_size: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,7 +52,7 @@ pub struct ImportResult {
 
 #[tauri::command]
 pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String)>(
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(
         "SELECT 
             i.id, i.filename, i.filepath, i.mimetype, i.size, i.width, i.height,
             ci.filepath as compressed_filepath, ci.size as compressed_size,
@@ -59,10 +63,12 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
                     'size', u.size,
                     'model', u.model_used
                 )
-            ), '[]') as upscaled_versions
+            ), '[]') as upscaled_versions,
+            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size
          FROM images i
          LEFT JOIN compressed_images ci ON ci.original_id = i.id
          LEFT JOIN upscaled_images u ON u.original_id = i.id
+         LEFT JOIN bg_removed_images bi ON bi.original_id = i.id
          GROUP BY i.id
          ORDER BY i.id DESC"
     )
@@ -72,11 +78,13 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
 
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions)| {
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size)| {
             Image { 
                 id, filename, filepath, mimetype, size, width, height, 
                 compressed_filepath, compressed_size,
                 upscaled_versions,
+                bg_removed_filepath,
+                bg_removed_size,
             }
         })
         .collect();
@@ -86,7 +94,7 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
 
 #[tauri::command]
 pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String)>(
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(
         "SELECT 
             i.id, i.filename, ci.filepath, i.mimetype, ci.size, i.width, i.height,
             ci.filepath as compressed_filepath, ci.size as compressed_size,
@@ -97,10 +105,12 @@ pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<
                     'size', u.size,
                     'model', u.model_used
                 )
-            ), '[]') as upscaled_versions
+            ), '[]') as upscaled_versions,
+            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size
          FROM images i
          INNER JOIN compressed_images ci ON ci.original_id = i.id
          LEFT JOIN upscaled_images u ON u.original_id = i.id
+         LEFT JOIN bg_removed_images bi ON bi.original_id = i.id
          GROUP BY i.id, ci.id
          ORDER BY ci.id DESC"
     )
@@ -110,11 +120,13 @@ pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<
 
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions)| {
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size)| {
             Image { 
                 id, filename, filepath, mimetype, size, width, height, 
                 compressed_filepath, compressed_size,
                 upscaled_versions,
+                bg_removed_filepath,
+                bg_removed_size,
             }
         })
         .collect();
@@ -158,6 +170,8 @@ pub async fn add_image(data: AddImageData, state: State<'_, DbState>) -> Result<
         compressed_filepath: None,
         compressed_size: None,
         upscaled_versions: "[]".to_string(),
+        bg_removed_filepath: None,
+        bg_removed_size: None,
     })
 }
 
@@ -274,6 +288,12 @@ pub async fn delete_image(id: i64, state: State<'_, DbState>) -> Result<(), Stri
         .await
         .map_err(|e| e.to_string())?;
 
+    sqlx::query("DELETE FROM bg_removed_images WHERE original_id = ?")
+        .bind(id)
+        .execute(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
     sqlx::query("DELETE FROM images WHERE id = ?")
         .bind(id)
         .execute(&state.0)
@@ -323,6 +343,18 @@ pub async fn check_db_health(state: State<'_, DbState>) -> Result<i64, String> {
         }
     }
 
+    // 4. Check background removed images
+    let bg_removed: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM bg_removed_images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (_id, filepath) in bg_removed {
+        if !std::path::Path::new(&filepath).exists() {
+            orphan_count += 1;
+        }
+    }
+
     Ok(orphan_count)
 }
 
@@ -347,6 +379,13 @@ pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
             
             // Delete associated upscaled images
             sqlx::query("DELETE FROM upscaled_images WHERE original_id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            // Delete associated background removed images
+            sqlx::query("DELETE FROM bg_removed_images WHERE original_id = ?")
                 .bind(id)
                 .execute(&state.0)
                 .await
@@ -399,6 +438,24 @@ pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
         }
     }
 
+    // 4. Check background removed images
+    let bg_removed: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM bg_removed_images")
+        .fetch_all(&state.0)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    for (id, filepath) in bg_removed {
+        if !std::path::Path::new(&filepath).exists() {
+            sqlx::query("DELETE FROM bg_removed_images WHERE id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+                
+            deleted_count += 1;
+        }
+    }
+
     Ok(deleted_count)
 }
 
@@ -425,6 +482,14 @@ pub async fn delete_images_by_ids(ids: Vec<i64>, state: State<'_, DbState>) -> R
         ui_q = ui_q.bind(id);
     }
     ui_q.execute(&state.0).await.map_err(|e| e.to_string())?;
+
+    // Also explicitly delete background removed images
+    let bi_query = format!("DELETE FROM bg_removed_images WHERE original_id IN ({})", placeholders);
+    let mut bi_q = sqlx::query(&bi_query);
+    for id in &ids {
+        bi_q = bi_q.bind(id);
+    }
+    bi_q.execute(&state.0).await.map_err(|e| e.to_string())?;
 
     let query = format!("DELETE FROM images WHERE id IN ({})", placeholders);
     let mut q = sqlx::query(&query);

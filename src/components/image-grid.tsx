@@ -22,9 +22,12 @@ import {
   Archive,
   Columns,
   Maximize2,
+  Scissors,
+  Info,
 } from 'lucide-react'
 import { useRow } from '@/schema/tinybase-schema'
 import { ImageCompare } from '@/components/image-compare'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface ImageGridProps {
   images: Image[]
@@ -49,11 +52,12 @@ const ImageGridItem = memo(function ImageGridItem({
   onSelect: (id: number, event: React.MouseEvent | React.KeyboardEvent) => void
   onKeyDown: (id: number, event: React.KeyboardEvent) => void
   onDelete: (id: number) => void
-  onCompare: (image: Image) => void
+  onCompare: (image: Image, type: 'compressed' | 'bg_removed') => void
 }) {
   const [imageError, setImageError] = useState(false)
   const compressingState = useRow('compressions', image.id.toString())
   const upscalingState = useRow('upscalings', image.id.toString())
+  const bgRemovalState = useRow('bg_removals', image.id.toString())
 
   // Parse upscaled_versions from JSON string
   const upscaledVersions = useMemo(() => {
@@ -112,10 +116,33 @@ const ImageGridItem = memo(function ImageGridItem({
     }
   }, [image.id, onDelete])
 
-  const handleCompare = useCallback(() => {
+  const handleCompareCompressed = useCallback(() => {
     if (!image.compressed_filepath) return
-    onCompare(image)
+    onCompare(image, 'compressed')
   }, [image, onCompare])
+
+  const handleCompareBgRemoved = useCallback(() => {
+    if (!image.bg_removed_filepath) return
+    onCompare(image, 'bg_removed')
+  }, [image, onCompare])
+
+  const handleOpenBgRemoved = useCallback(async () => {
+    if (!image.bg_removed_filepath) return
+    try {
+      await openFile(image.bg_removed_filepath)
+    } catch (err) {
+      logError(`Failed to open background removed file: ${err}`)
+    }
+  }, [image.bg_removed_filepath])
+
+  const handleRevealBgRemoved = useCallback(async () => {
+    if (!image.bg_removed_filepath) return
+    try {
+      await revealInExplorer(image.bg_removed_filepath)
+    } catch (err) {
+      logError(`Failed to reveal background removed file: ${err}`)
+    }
+  }, [image.bg_removed_filepath])
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => onSelect(image.id, e),
@@ -154,57 +181,110 @@ const ImageGridItem = memo(function ImageGridItem({
               </div>
             )}
 
-            <div className="absolute top-2 left-2 flex gap-1">
-              {isSelected && (
-                <span className="bg-primary text-primary-foreground flex h-5 w-5 items-center justify-center rounded-full">
-                  <Check className="h-3 w-3" />
-                </span>
+            <div className="absolute top-2 right-2 left-2 flex items-start justify-between">
+              <div className="flex max-w-[calc(100%-24px)] flex-wrap gap-1">
+                {isSelected && (
+                  <span className="bg-primary text-primary-foreground flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full">
+                    <Check className="h-3 w-3" />
+                  </span>
+                )}
+                {image.compressed_filepath && (
+                  <span
+                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500 text-white"
+                    title="Compressed"
+                  >
+                    <Archive className="h-2.5 w-2.5" />
+                  </span>
+                )}
+                {upscaledVersions.map(
+                  (version: { scale: number; filepath: string }, idx: number) => (
+                    <span
+                      key={idx}
+                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-500 text-white"
+                      title={`Upscaled ${version.scale}x`}
+                    >
+                      <Maximize2 className="h-2.5 w-2.5" />
+                    </span>
+                  )
+                )}
+                {image.bg_removed_filepath && (
+                  <span
+                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-purple-500 text-white"
+                    title="Background Removed"
+                  >
+                    <Scissors className="h-2.5 w-2.5" />
+                  </span>
+                )}
+              </div>
+
+              {(image.compressed_filepath ||
+                upscaledVersions.length > 0 ||
+                image.bg_removed_filepath) && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
+                        <Info className="h-3 w-3" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="right" className="max-w-[200px] p-3">
+                      <div className="space-y-2 text-xs">
+                        {image.compressed_size && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-green-600">Compressed:</span>
+                            <span className="font-medium">
+                              {formatBytes(image.compressed_size)}
+                            </span>
+                          </div>
+                        )}
+                        {upscaledVersions.length > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-blue-600">Upscaled:</span>
+                            <span className="font-medium">
+                              {upscaledVersions
+                                .map((v: { scale: number }) => `${v.scale}x`)
+                                .join(', ')}
+                            </span>
+                          </div>
+                        )}
+                        {image.bg_removed_size && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-purple-600">BG Removed:</span>
+                            <span className="font-medium">
+                              {formatBytes(image.bg_removed_size)}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
-              {image.compressed_filepath && (
-                <span
-                  className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white"
-                  title="Compressed"
-                >
-                  <Archive className="h-2.5 w-2.5" />
-                </span>
-              )}
-              {upscaledVersions.map((version: { scale: number; filepath: string }, idx: number) => (
-                <span
-                  key={idx}
-                  className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-500 text-white"
-                  title={`Upscaled ${version.scale}x`}
-                >
-                  <Maximize2 className="h-2.5 w-2.5" />
-                </span>
-              ))}
             </div>
 
             <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-2 py-1.5">
               <p className="truncate text-xs font-semibold text-white">{image.filename}</p>
-              <div className="flex items-center justify-between text-[10px] text-white/80">
-                <span>{image.size ? formatBytes(image.size) : 'Unknown'}</span>
-                {image.compressed_size && (
-                  <span className="text-green-300">→{formatBytes(image.compressed_size)}</span>
-                )}
-                {upscaledVersions.map((version: { scale: number }, idx: number) => (
-                  <span key={idx} className="text-blue-300">
-                    {version.scale}x
-                  </span>
-                ))}
-              </div>
+              <p className="text-[10px] text-white/80">
+                {image.size ? formatBytes(image.size) : 'Unknown'}
+              </p>
             </div>
 
             {(Object.keys(compressingState).length > 0 ||
-              Object.keys(upscalingState).length > 0) && (
+              Object.keys(upscalingState).length > 0 ||
+              Object.keys(bgRemovalState).length > 0) && (
               <div className="bg-background/80 absolute inset-0 z-10 flex flex-col items-center justify-center p-2">
                 <Progress
                   value={
-                    (compressingState.progress as number) || (upscalingState.progress as number)
+                    (compressingState.progress as number) ||
+                    (upscalingState.progress as number) ||
+                    (bgRemovalState.progress as number)
                   }
                   className="mb-1.5 h-1.5 w-full"
                 />
                 <span className="text-[10px] font-medium">
-                  {(compressingState.message as string) || (upscalingState.message as string)}
+                  {(compressingState.message as string) ||
+                    (upscalingState.message as string) ||
+                    (bgRemovalState.message as string)}
                 </span>
               </div>
             )}
@@ -225,9 +305,9 @@ const ImageGridItem = memo(function ImageGridItem({
         {image.compressed_filepath && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onClick={handleCompare}>
+            <ContextMenuItem onClick={handleCompareCompressed}>
               <Columns className="mr-2 h-4 w-4" />
-              Compare
+              Compare (Compressed)
             </ContextMenuItem>
             <ContextMenuItem onClick={handleOpenCompressed}>
               <ExternalLink className="mr-2 h-4 w-4" />
@@ -267,6 +347,24 @@ const ImageGridItem = memo(function ImageGridItem({
           </>
         )}
 
+        {image.bg_removed_filepath && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem onClick={handleCompareBgRemoved}>
+              <Columns className="mr-2 h-4 w-4" />
+              Compare (Background Removed)
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleOpenBgRemoved}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open Background Removed
+            </ContextMenuItem>
+            <ContextMenuItem onClick={handleRevealBgRemoved}>
+              <FolderSearch className="mr-2 h-4 w-4" />
+              Reveal Background Removed
+            </ContextMenuItem>
+          </>
+        )}
+
         <ContextMenuSeparator />
         <ContextMenuItem onClick={handleDelete} className="text-red-500">
           <Trash2 className="mr-2 h-4 w-4" />
@@ -287,6 +385,7 @@ export function ImageGrid({
 }: ImageGridProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [compareImage, setCompareImage] = useState<Image | null>(null)
+  const [compareType, setCompareType] = useState<'compressed' | 'bg_removed' | null>(null)
 
   useEffect(() => {
     const unlistenDragEnter = listen<{ paths: string[] }>('tauri://drag-enter', () => {
@@ -373,7 +472,10 @@ export function ImageGrid({
               onSelect={handleSelect}
               onKeyDown={handleKeyDown}
               onDelete={onDelete}
-              onCompare={setCompareImage}
+              onCompare={(image, type) => {
+                setCompareImage(image)
+                setCompareType(type)
+              }}
             />
           ))}
         </div>
@@ -390,8 +492,14 @@ export function ImageGrid({
 
       <ImageCompare
         image={compareImage}
+        compareType={compareType}
         open={!!compareImage}
-        onOpenChange={(open) => !open && setCompareImage(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCompareImage(null)
+            setCompareType(null)
+          }
+        }}
       />
     </section>
   )

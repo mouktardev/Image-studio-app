@@ -20,6 +20,8 @@ export interface Image {
   compressed_filepath?: string | null
   compressed_size?: number | null
   upscaled_versions?: UpscaledVersion[] // JSON parsed from backend
+  bg_removed_filepath?: string | null
+  bg_removed_size?: number | null
 }
 
 export interface AddImageData {
@@ -175,4 +177,28 @@ export async function upscaleImagesByIds(
 
 export async function getAllUpscaledImages(): Promise<Image[]> {
   return invoke<Image[]>('get_all_upscaled_images')
+}
+
+// Background Removal API
+export interface BgRemovalModelStatus {
+  name: string
+  downloaded: boolean
+  path: string
+  size: number | null
+}
+
+export async function getBgRemovalModelStatus(): Promise<BgRemovalModelStatus> {
+  return invoke<BgRemovalModelStatus>('get_bg_removal_model_status')
+}
+
+export async function downloadBgRemovalModel(): Promise<string> {
+  return invoke<string>('download_bg_removal_model')
+}
+
+export async function removeBackgroundByIds(ids: number[]): Promise<number> {
+  return invoke<number>('remove_background_by_ids', { ids })
+}
+
+export async function getAllBgRemovedImages(): Promise<Image[]> {
+  return invoke<Image[]>('get_all_bg_removed_images')
 }

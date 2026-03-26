@@ -12,7 +12,6 @@ import {
   useCreateQueries,
 } from '@/schema/tinybase-schema'
 import { createQueries, createStore } from 'tinybase/with-schemas'
-import { Toaster } from '@/components/ui/sonner'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { setupLogger, attachGlobalLogListener } from '@/lib/logger'
 import { checkDbHealth } from '@/lib/tauri'
@@ -59,7 +58,6 @@ export function App() {
       <TinyBaseProvider store={store} queries={queries}>
         <TooltipProvider>
           <RouterProvider router={router} />
-          <Toaster />
         </TooltipProvider>
       </TinyBaseProvider>
     </ThemeProvider>

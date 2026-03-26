@@ -175,3 +175,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ### Roadmap (planned)
 
 - [ ] Add advanced **Format Conversion** options.
+- [ ] Add image editor.

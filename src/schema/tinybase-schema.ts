@@ -13,6 +13,10 @@ export const tablesSchema = {
     progress: { type: 'number' },
     message: { type: 'string' },
   },
+  bg_removals: {
+    progress: { type: 'number' },
+    message: { type: 'string' },
+  },
   logs: {
     level: { type: 'number' },
     message: { type: 'string' },

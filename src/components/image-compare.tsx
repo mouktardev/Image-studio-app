@@ -11,12 +11,28 @@ import { type Image } from '@/lib/tauri'
 
 interface ImageCompareProps {
   image: Image | null
+  compareType: 'compressed' | 'bg_removed' | null
   open: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function ImageCompare({ image, open, onOpenChange }: ImageCompareProps) {
-  if (!image?.compressed_filepath) return null
+export function ImageCompare({ image, compareType, open, onOpenChange }: ImageCompareProps) {
+  const hasCompressed = !!image?.compressed_filepath
+  const hasBgRemoved = !!image?.bg_removed_filepath
+
+  if (!hasCompressed && !hasBgRemoved) return null
+
+  // Use the explicitly passed compareType, or default based on what's available
+  const isBgRemovedComparison = compareType === 'bg_removed' || (!compareType && hasBgRemoved)
+  const compareFilepath = isBgRemovedComparison
+    ? image.bg_removed_filepath
+    : image.compressed_filepath
+  const compareSize = isBgRemovedComparison ? image.bg_removed_size : image.compressed_size
+  const compareLabel = isBgRemovedComparison ? 'Background Removed' : 'Compressed'
+  const compareColorClass = isBgRemovedComparison
+    ? 'text-purple-600 dark:text-purple-400'
+    : 'text-emerald-600 dark:text-emerald-400'
+  const compareBadgeClass = isBgRemovedComparison ? 'bg-purple-600/80' : 'bg-emerald-600/80'
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -26,7 +42,8 @@ export function ImageCompare({ image, open, onOpenChange }: ImageCompareProps) {
             {image.filename}
           </DialogTitle>
           <DialogDescription>
-            Drag the slider to compare original and compressed images
+            Drag the slider to compare original and{' '}
+            {isBgRemovedComparison ? 'background removed' : 'compressed'} images
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-900">
@@ -41,13 +58,27 @@ export function ImageCompare({ image, open, onOpenChange }: ImageCompareProps) {
               </div>
             }
             itemTwo={
-              <div className="relative h-full w-full">
+              <div
+                className="relative h-full w-full"
+                style={{
+                  backgroundColor: '#ffffff',
+                  backgroundImage: isBgRemovedComparison
+                    ? 'linear-gradient(45deg, #f0f0f0 25%, transparent 25%), linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f0f0f0 75%), linear-gradient(-45deg, transparent 75%, #f0f0f0 75%)'
+                    : 'none',
+                  backgroundSize: isBgRemovedComparison ? '20px 20px' : 'auto',
+                  backgroundPosition: isBgRemovedComparison
+                    ? '0 0, 0 10px, 10px -10px, -10px 0px'
+                    : 'initial',
+                }}
+              >
                 <ReactCompareSliderImage
-                  src={convertFileSrc(image.compressed_filepath)}
-                  alt="Compressed"
+                  src={convertFileSrc(compareFilepath!)}
+                  alt={compareLabel}
                 />
-                <div className="pointer-events-none absolute top-2 right-2 rounded-full bg-emerald-600/80 px-2 py-1 text-[0.62rem] font-semibold text-white">
-                  Compressed
+                <div
+                  className={`pointer-events-none absolute top-2 right-2 rounded-full ${compareBadgeClass} px-2 py-1 text-[0.62rem] font-semibold text-white`}
+                >
+                  {compareLabel}
                 </div>
               </div>
             }
@@ -58,8 +89,8 @@ export function ImageCompare({ image, open, onOpenChange }: ImageCompareProps) {
           />
         </div>
         <div className="border-muted/40 border-t px-3 pt-2 pb-2 text-xs">
-          <div className="mx-auto flex max-w-160 flex-wrap justify-center gap-2 text-center">
-            <div className="bg-muted/20 min-w-25 rounded-lg px-2 py-1.5">
+          <div className="mx-auto flex max-w-160 justify-center gap-2 text-center">
+            <div className="bg-muted/20 min-w-[70px] rounded-lg px-2 py-1">
               <p className="text-muted-foreground text-[0.61rem] tracking-wide uppercase">
                 Original
               </p>
@@ -67,29 +98,29 @@ export function ImageCompare({ image, open, onOpenChange }: ImageCompareProps) {
                 {image.size ? `${(image.size / 1024).toFixed(1)} KB` : 'Unknown'}
               </p>
             </div>
-            <div className="bg-muted/20 min-w-25 rounded-lg px-2 py-1.5">
+            <div className="bg-muted/20 min-w-[70px] rounded-lg px-2 py-1">
               <p className="text-muted-foreground text-[0.61rem] tracking-wide uppercase">
-                Compressed
+                {compareLabel}
               </p>
-              <p className="font-medium text-emerald-600 dark:text-emerald-400">
-                {image.compressed_size
-                  ? `${(image.compressed_size / 1024).toFixed(1)} KB`
-                  : 'Unknown'}
+              <p className={`font-medium ${compareColorClass}`}>
+                {compareSize ? `${(compareSize / 1024).toFixed(1)} KB` : 'Unknown'}
               </p>
             </div>
-            {image.size && image.compressed_size ? (
-              <div className="bg-muted/20 min-w-25 rounded-lg px-2 py-1.5">
+            {image.size && compareSize ? (
+              <div className="bg-muted/20 min-w-[70px] rounded-lg px-2 py-1">
                 <p className="text-muted-foreground text-[0.61rem] tracking-wide uppercase">
-                  Savings
+                  {isBgRemovedComparison ? 'Diff' : 'Save'}
                 </p>
                 <p
                   className={`font-medium ${
-                    image.compressed_size <= image.size
+                    !isBgRemovedComparison && compareSize <= image.size
                       ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-rose-500 dark:text-rose-400'
+                      : isBgRemovedComparison
+                        ? 'text-slate-600 dark:text-slate-400'
+                        : 'text-rose-500 dark:text-rose-400'
                   }`}
                 >
-                  {((1 - image.compressed_size / image.size) * 100).toFixed(1)}%
+                  {Math.abs((1 - compareSize / image.size) * 100).toFixed(1)}%
                 </p>
               </div>
             ) : null}

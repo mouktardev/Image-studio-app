@@ -12,6 +12,10 @@ use crud::upscaling::{
     upscale_images_by_ids, get_all_upscaled_images, get_model_status, 
     download_model, get_upscale_settings, set_upscale_settings
 };
+use crud::background_removal::{
+    remove_background_by_ids, get_all_bg_removed_images, get_bg_removal_model_status,
+    download_bg_removal_model
+};
 use sqlx::SqlitePool;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, State};
@@ -64,6 +68,8 @@ pub fn run() {
                 ])
                 .level(log::LevelFilter::Info)
                 .level_for("tao", log::LevelFilter::Error)
+                .level_for("ort", log::LevelFilter::Warn)
+                .level_for("tracing", log::LevelFilter::Warn)
                 .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                 .build(),
         )
@@ -125,7 +131,11 @@ pub fn run() {
             get_model_status,
             download_model,
             get_upscale_settings,
-            set_upscale_settings
+            set_upscale_settings,
+            remove_background_by_ids,
+            get_all_bg_removed_images,
+            get_bg_removal_model_status,
+            download_bg_removal_model
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

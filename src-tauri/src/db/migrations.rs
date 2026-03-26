@@ -10,6 +10,7 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_selections_table(pool).await?;
     create_compressed_images_table(pool).await?;
     create_upscaled_images_table(pool).await?;
+    create_bg_removed_images_table(pool).await?;
     insert_default_settings(pool, app).await?;
     insert_default_swatches(pool).await?;
 
@@ -97,6 +98,11 @@ async fn insert_default_settings(pool: &SqlitePool, app: &AppHandle) -> Result<(
         .execute(pool)
         .await
         .context("Failed to insert default 'upscale_gpu' setting")?;
+
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('bg_removal_model', 'bria-rmbg-1.4')")
+        .execute(pool)
+        .await
+        .context("Failed to insert default 'bg_removal_model' setting")?;
 
     Ok(())
 }
@@ -190,6 +196,26 @@ async fn create_upscaled_images_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create 'upscaled_images' table")?;
+
+    Ok(())
+}
+
+async fn create_bg_removed_images_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bg_removed_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            original_id INTEGER NOT NULL UNIQUE,
+            filepath TEXT NOT NULL,
+            size INTEGER,
+            model_used TEXT NOT NULL,
+            FOREIGN KEY (original_id) REFERENCES images(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'bg_removed_images' table")?;
 
     Ok(())
 }

@@ -11,16 +11,41 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Trash2, Upload, Loader2, ArchiveRestore, Maximize2, Download } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Trash2,
+  Upload,
+  Loader2,
+  ArchiveRestore,
+  Maximize2,
+  Download,
+  Scissors,
+  MoreHorizontal,
+} from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { error as logError } from '@/lib/logger'
-import { getModelStatus, downloadModel, getUpscaleSettings, setUpscaleSettings } from '@/lib/tauri'
+import {
+  getModelStatus,
+  downloadModel,
+  getUpscaleSettings,
+  setUpscaleSettings,
+  getBgRemovalModelStatus,
+  downloadBgRemovalModel,
+} from '@/lib/tauri'
 import type { Image } from '@/lib/tauri'
 
 const MODEL_SIZES: Record<string, number> = {
   'realesrgan-x2': 54 * 1024 * 1024, // Swin2SR-classical-sr-x2-64: ~54 MB
   'realesrgan-x4': 54 * 1024 * 1024, // swin2SR-realworld-sr-x4: ~54 MB
 }
+
+const BG_REMOVAL_MODEL_SIZE = 176 * 1024 * 1024 // BRIA RMBG-1.4 ONNX: ~176 MB
 
 interface ImageToolsProps {
   images: Image[]
@@ -30,6 +55,7 @@ interface ImageToolsProps {
   onDeleteSelected: (ids: number[]) => void
   onCompressSelected: (ids: number[], quality: number) => void
   onUpscaleSelected: (ids: number[], scale: number, model: string) => void
+  onRemoveBackgroundSelected?: (ids: number[]) => void
   isImporting?: boolean
 }
 
@@ -41,11 +67,13 @@ export function ImageTools({
   onDeleteSelected,
   onCompressSelected,
   onUpscaleSelected,
+  onRemoveBackgroundSelected,
   isImporting = false,
 }: ImageToolsProps) {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
   const [openCompressDialog, setOpenCompressDialog] = useState(false)
   const [openUpscaleDialog, setOpenUpscaleDialog] = useState(false)
+  const [openBgRemovalDialog, setOpenBgRemovalDialog] = useState(false)
   const [compressionQuality, setCompressionQuality] = useState([80])
   const [upscaleScale, setUpscaleScale] = useState(4)
   const [upscaleModel, setUpscaleModel] = useState('realesrgan-x4')
@@ -53,6 +81,11 @@ export function ImageTools({
   const [modelDownloaded, setModelDownloaded] = useState(false)
   const [modelSize, setModelSize] = useState<number | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
+
+  // Background removal state
+  const [bgRemovalModelDownloaded, setBgRemovalModelDownloaded] = useState(false)
+  const [bgRemovalModelSize, setBgRemovalModelSize] = useState<number | null>(null)
+  const [isBgRemovalDownloading, setIsBgRemovalDownloading] = useState(false)
 
   const checkModelStatus = useCallback(async () => {
     try {
@@ -133,10 +166,49 @@ export function ImageTools({
     setOpenUpscaleDialog(false)
   }
 
+  // Background removal handlers
+  const checkBgRemovalModelStatus = useCallback(async () => {
+    try {
+      const status = await getBgRemovalModelStatus()
+      setBgRemovalModelDownloaded(status.downloaded)
+      setBgRemovalModelSize(status.size ?? null)
+    } catch (err) {
+      logError(`Failed to check background removal model status: ${err}`)
+      setBgRemovalModelDownloaded(false)
+      setBgRemovalModelSize(null)
+    }
+  }, [])
+
+  // Check background removal model status when dialog opens
+  useEffect(() => {
+    if (openBgRemovalDialog) {
+      checkBgRemovalModelStatus()
+    }
+  }, [openBgRemovalDialog, checkBgRemovalModelStatus])
+
+  const handleDownloadBgRemovalModel = async () => {
+    setIsBgRemovalDownloading(true)
+    try {
+      await downloadBgRemovalModel()
+      setBgRemovalModelDownloaded(true)
+    } catch (err) {
+      logError(`Failed to download background removal model: ${err}`)
+    } finally {
+      setIsBgRemovalDownloading(false)
+    }
+  }
+
+  const handleBgRemovalConfirm = async () => {
+    if (onRemoveBackgroundSelected) {
+      onRemoveBackgroundSelected(selectedIds)
+    }
+    setOpenBgRemovalDialog(false)
+  }
+
   const selectedImages = images.filter((img) => selectedIds.includes(img.id))
 
   return (
-    <div className="bg-background flex items-center gap-4 border-b p-4">
+    <div className="bg-background flex flex-wrap items-center gap-2 border-b p-3">
       <div className="flex items-center gap-2">
         <Checkbox
           id="select-all"
@@ -160,31 +232,48 @@ export function ImageTools({
         </Label>
       </div>
 
-      <Button onClick={onImport} disabled={isImporting}>
+      <Button size="sm" onClick={onImport} disabled={isImporting}>
         {isImporting ? (
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
         ) : (
-          <Upload className="mr-2 h-4 w-4" />
+          <Upload className="mr-1.5 h-4 w-4" />
         )}
-        Import Images
+        Import
       </Button>
 
       {selectedIds.length > 0 && (
         <>
-          <Button variant="outline" onClick={() => setOpenCompressDialog(true)}>
-            <ArchiveRestore className="mr-2 h-4 w-4" />
-            Compress ({selectedIds.length})
-          </Button>
-
-          <Button variant="outline" onClick={() => setOpenUpscaleDialog(true)}>
-            <Maximize2 className="mr-2 h-4 w-4" />
-            Upscale ({selectedIds.length})
-          </Button>
-
-          <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)}>
-            <Trash2 className="mr-2 h-4 w-4" />
-            Delete ({selectedIds.length})
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline">
+                <MoreHorizontal className="mr-1.5 h-4 w-4" />
+                Actions
+                <span className="ml-1 text-xs">({selectedIds.length})</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuItem onClick={() => setOpenCompressDialog(true)}>
+                <ArchiveRestore className="mr-2 h-4 w-4" />
+                Compress
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpenUpscaleDialog(true)}>
+                <Maximize2 className="mr-2 h-4 w-4" />
+                Upscale
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOpenBgRemovalDialog(true)}>
+                <Scissors className="mr-2 h-4 w-4" />
+                Remove Background
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => setOpenDeleteDialog(true)}
+                className="text-destructive focus:text-destructive"
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Dialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
             <DialogContent>
@@ -398,6 +487,86 @@ export function ImageTools({
                 </Button>
                 <Button onClick={handleUpscaleConfirm} disabled={!modelDownloaded}>
                   Start Upscaling
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={openBgRemovalDialog} onOpenChange={setOpenBgRemovalDialog}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Remove Background from {selectedIds.length} image(s)</DialogTitle>
+                <DialogDescription>
+                  Remove backgrounds using AI-powered segmentation. Output will be PNG with
+                  transparency.
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 py-4">
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        bgRemovalModelDownloaded ? 'bg-green-500' : 'bg-yellow-500'
+                      }`}
+                    />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-medium">
+                        {bgRemovalModelDownloaded ? 'Downloaded' : 'Not Downloaded'}
+                      </span>
+                      <span className="text-muted-foreground text-xs">
+                        {bgRemovalModelDownloaded && bgRemovalModelSize
+                          ? formatBytes(bgRemovalModelSize)
+                          : formatBytes(BG_REMOVAL_MODEL_SIZE)}
+                      </span>
+                    </div>
+                  </div>
+                  {!bgRemovalModelDownloaded && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleDownloadBgRemovalModel}
+                      disabled={isBgRemovalDownloading}
+                    >
+                      {isBgRemovalDownloading ? (
+                        <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                      )}
+                      <span className="text-xs">
+                        {isBgRemovalDownloading ? 'Downloading...' : 'Download'}
+                      </span>
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-muted-foreground text-xs">
+                    BRIA RMBG-1.4 (~176 MB) - State-of-the-art background removal
+                  </p>
+                </div>
+
+                {selectedIds.length > 0 && (
+                  <div className="bg-muted max-h-40 overflow-y-auto rounded border p-2">
+                    {selectedImages.map((img) => (
+                      <div
+                        key={img.id}
+                        className="flex items-center justify-between border-b py-1 last:border-b-0"
+                      >
+                        <span className="max-w-37.5 truncate text-sm">{img.filename}</span>
+                        <span className="text-muted-foreground text-xs">→ no_bg.png</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setOpenBgRemovalDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleBgRemovalConfirm} disabled={!bgRemovalModelDownloaded}>
+                  Remove Background
                 </Button>
               </DialogFooter>
             </DialogContent>
