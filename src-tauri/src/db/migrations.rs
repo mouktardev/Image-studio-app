@@ -11,8 +11,10 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_compressed_images_table(pool).await?;
     create_upscaled_images_table(pool).await?;
     create_bg_removed_images_table(pool).await?;
+    create_filters_table(pool).await?;
     insert_default_settings(pool, app).await?;
     insert_default_swatches(pool).await?;
+    insert_default_filters(pool).await?;
 
     Ok(())
 }
@@ -216,6 +218,47 @@ async fn create_bg_removed_images_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create 'bg_removed_images' table")?;
+
+    Ok(())
+}
+
+async fn create_filters_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS filters (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            page TEXT NOT NULL UNIQUE,
+            search_query TEXT DEFAULT '',
+            sort_field TEXT DEFAULT 'date',
+            sort_order TEXT DEFAULT 'desc',
+            output_type TEXT DEFAULT 'all',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'filters' table")?;
+
+    Ok(())
+}
+
+async fn insert_default_filters(pool: &SqlitePool) -> Result<()> {
+    // Default filters for index page
+    sqlx::query(
+        "INSERT OR IGNORE INTO filters (page, search_query, sort_field, sort_order, output_type) VALUES ('index', '', 'date', 'desc', 'all')"
+    )
+    .execute(pool)
+    .await
+    .context("Failed to insert default index filters")?;
+
+    // Default filters for output page
+    sqlx::query(
+        "INSERT OR IGNORE INTO filters (page, search_query, sort_field, sort_order, output_type) VALUES ('output', '', 'date', 'desc', 'all')"
+    )
+    .execute(pool)
+    .await
+    .context("Failed to insert default output filters")?;
 
     Ok(())
 }

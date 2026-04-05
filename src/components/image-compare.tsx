@@ -58,19 +58,7 @@ export function ImageCompare({ image, compareType, open, onOpenChange }: ImageCo
               </div>
             }
             itemTwo={
-              <div
-                className="relative h-full w-full"
-                style={{
-                  backgroundColor: '#ffffff',
-                  backgroundImage: isBgRemovedComparison
-                    ? 'linear-gradient(45deg, #f0f0f0 25%, transparent 25%), linear-gradient(-45deg, #f0f0f0 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f0f0f0 75%), linear-gradient(-45deg, transparent 75%, #f0f0f0 75%)'
-                    : 'none',
-                  backgroundSize: isBgRemovedComparison ? '20px 20px' : 'auto',
-                  backgroundPosition: isBgRemovedComparison
-                    ? '0 0, 0 10px, 10px -10px, -10px 0px'
-                    : 'initial',
-                }}
-              >
+              <div className="bg-card relative h-full w-full">
                 <ReactCompareSliderImage
                   src={convertFileSrc(compareFilepath!)}
                   alt={compareLabel}

@@ -27,6 +27,7 @@ import {
   Download,
   Scissors,
   MoreHorizontal,
+  RotateCcw,
 } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { error as logError } from '@/lib/logger'
@@ -39,6 +40,9 @@ import {
   downloadBgRemovalModel,
 } from '@/lib/tauri'
 import type { Image } from '@/lib/tauri'
+import { SearchBar } from '@/components/search-bar'
+import { SortDropdown } from '@/components/sort-dropdown'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const MODEL_SIZES: Record<string, number> = {
   'realesrgan-x2': 54 * 1024 * 1024, // Swin2SR-classical-sr-x2-64: ~54 MB
@@ -57,6 +61,15 @@ interface ImageToolsProps {
   onUpscaleSelected: (ids: number[], scale: number, model: string) => void
   onRemoveBackgroundSelected?: (ids: number[]) => void
   isImporting?: boolean
+  // Filter props
+  searchQuery?: string
+  onSearchChange?: (value: string) => void
+  sortField?: 'name' | 'size' | 'date'
+  sortOrder?: 'asc' | 'desc'
+  onSortFieldChange?: (field: 'name' | 'size' | 'date') => void
+  onSortOrderChange?: (order: 'asc' | 'desc') => void
+  hasActiveFilters?: boolean
+  onResetFilters?: () => void
 }
 
 export function ImageTools({
@@ -69,6 +82,15 @@ export function ImageTools({
   onUpscaleSelected,
   onRemoveBackgroundSelected,
   isImporting = false,
+  // Filter props
+  searchQuery = '',
+  onSearchChange,
+  sortField = 'date',
+  sortOrder = 'desc',
+  onSortFieldChange,
+  onSortOrderChange,
+  hasActiveFilters = false,
+  onResetFilters,
 }: ImageToolsProps) {
   const [openDeleteDialog, setOpenDeleteDialog] = useState(false)
   const [openCompressDialog, setOpenCompressDialog] = useState(false)
@@ -209,30 +231,7 @@ export function ImageTools({
 
   return (
     <div className="bg-background flex flex-wrap items-center gap-2 border-b p-3">
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="select-all"
-          checked={
-            images.length === 0
-              ? false
-              : selectedIds.length === images.length
-                ? true
-                : selectedIds.length > 0
-                  ? 'indeterminate'
-                  : false
-          }
-          onCheckedChange={handleSelectAll}
-          disabled={images.length === 0}
-        />
-        <Label
-          htmlFor="select-all"
-          className={`text-sm ${images.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-        >
-          {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select all'}
-        </Label>
-      </div>
-
-      <Button size="sm" onClick={onImport} disabled={isImporting}>
+      <Button onClick={onImport} disabled={isImporting} variant="secondary">
         {isImporting ? (
           <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
         ) : (
@@ -240,12 +239,11 @@ export function ImageTools({
         )}
         Import
       </Button>
-
       {selectedIds.length > 0 && (
         <>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline">
+              <Button>
                 <MoreHorizontal className="mr-1.5 h-4 w-4" />
                 Actions
                 <span className="ml-1 text-xs">({selectedIds.length})</span>
@@ -572,6 +570,59 @@ export function ImageTools({
             </DialogContent>
           </Dialog>
         </>
+      )}
+      <div className="ml-auto flex items-center gap-2">
+        <Checkbox
+          id="select-all"
+          checked={
+            images.length === 0
+              ? false
+              : selectedIds.length === images.length
+                ? true
+                : selectedIds.length > 0
+                  ? 'indeterminate'
+                  : false
+          }
+          onCheckedChange={handleSelectAll}
+          disabled={images.length === 0}
+        />
+        <Label
+          htmlFor="select-all"
+          className={`text-sm ${images.length === 0 ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+        >
+          {selectedIds.length > 0 ? `${selectedIds.length} selected` : 'Select all'}
+        </Label>
+      </div>
+      {/* Search and Sort Controls */}
+      {onSearchChange && onSortFieldChange && onSortOrderChange && (
+        <div className="flex items-center gap-2">
+          <SearchBar value={searchQuery} onChange={onSearchChange} placeholder="Enter file name" />
+          <SortDropdown
+            sortField={sortField}
+            sortOrder={sortOrder}
+            onSortFieldChange={onSortFieldChange}
+            onSortOrderChange={onSortOrderChange}
+          />
+          {hasActiveFilters && onResetFilters && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    onClick={onResetFilters}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reset filters</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       )}
     </div>
   )

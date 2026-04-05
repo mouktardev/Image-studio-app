@@ -92,8 +92,8 @@ export async function selectFiles(): Promise<string[] | null> {
   return Array.isArray(selected) ? selected : [selected]
 }
 
-export async function getAllImages(): Promise<Image[]> {
-  return invoke<Image[]>('get_all_images')
+export async function getAllImages(params?: ImageQueryParams): Promise<Image[]> {
+  return invoke<Image[]>('get_all_images', { params })
 }
 
 export async function getAllCompressedImages(): Promise<Image[]> {
@@ -201,4 +201,39 @@ export async function removeBackgroundByIds(ids: number[]): Promise<number> {
 
 export async function getAllBgRemovedImages(): Promise<Image[]> {
   return invoke<Image[]>('get_all_bg_removed_images')
+}
+
+// Filters API
+export interface FilterState {
+  page: string
+  search_query: string
+  sort_field: 'name' | 'size' | 'date'
+  sort_order: 'asc' | 'desc'
+  output_type: 'all' | 'compressed' | 'upscaled' | 'bg_removed'
+}
+
+export interface UpdateFilterRequest {
+  page: string
+  search_query?: string
+  sort_field?: 'name' | 'size' | 'date'
+  sort_order?: 'asc' | 'desc'
+  output_type?: 'all' | 'compressed' | 'upscaled' | 'bg_removed'
+}
+
+export interface ImageQueryParams {
+  search?: string
+  sort_field: 'name' | 'size' | 'date'
+  sort_order: 'asc' | 'desc'
+}
+
+export async function getFilters(page: string): Promise<FilterState> {
+  return invoke<FilterState>('get_filters', { page })
+}
+
+export async function updateFilters(request: UpdateFilterRequest): Promise<void> {
+  return invoke<void>('update_filters', { request })
+}
+
+export async function resetFilters(page: string): Promise<FilterState> {
+  return invoke<FilterState>('reset_filters', { page })
 }

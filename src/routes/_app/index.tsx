@@ -11,6 +11,8 @@ import {
   upscaleImagesByIds,
   removeBackgroundByIds,
   checkDbHealth,
+  getFilters,
+  updateFilters,
   type Image,
 } from '@/lib/tauri'
 import {
@@ -24,11 +26,25 @@ import {
 import { error as logError } from '@/lib/logger'
 import { ImageTools } from '@/components/image-tools'
 import { useSetValueCallback } from '@/schema/tinybase-schema'
+import { useFilters } from '@/hooks/use-filters'
 
 export const Route = createFileRoute('/_app/')({
-  loader: async () => {
-    const [images, selectedIds] = await Promise.all([getAllImages(), getSelections()])
-    return { images, selectedIds }
+  beforeLoad: async () => {
+    // Fetch filters before route renders to prevent flash of unfiltered content
+    const filters = await getFilters('index')
+    return { filters }
+  },
+  loader: async ({ context }) => {
+    const { filters } = context
+    const [images, selectedIds] = await Promise.all([
+      getAllImages({
+        search: filters.search_query || undefined,
+        sort_field: filters.sort_field,
+        sort_order: filters.sort_order,
+      }),
+      getSelections(),
+    ])
+    return { images, selectedIds, filters }
   },
   gcTime: 0,
   staleTime: 0,
@@ -42,7 +58,77 @@ function IndexPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>(loaderData.selectedIds)
   const [isImporting, setIsImporting] = useState(false)
 
+  // Initialize filter state from loader data (fetched via beforeLoad)
+  const [searchQuery, setSearchQuery] = useState(loaderData.filters.search_query)
+  const [sortField, setSortField] = useState<'name' | 'size' | 'date'>(
+    loaderData.filters.sort_field
+  )
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(loaderData.filters.sort_order)
+
+  // Use filters hook for reset functionality
+  const { resetFilters } = useFilters('index')
+
   const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
+
+  // Sync search query changes to SQLite and reload images
+  useEffect(() => {
+    const syncAndReload = async () => {
+      try {
+        await updateFilters({ page: 'index', search_query: searchQuery })
+        const updated = await getAllImages({
+          search: searchQuery || undefined,
+          sort_field: sortField,
+          sort_order: sortOrder,
+        })
+        setImages(updated)
+      } catch (err) {
+        logError(`Failed to sync search and reload images: ${err}`)
+      }
+    }
+
+    syncAndReload()
+  }, [searchQuery])
+
+  // Sync sort field changes to SQLite and reload images
+  useEffect(() => {
+    const syncAndReload = async () => {
+      try {
+        await updateFilters({ page: 'index', sort_field: sortField })
+        const updated = await getAllImages({
+          search: searchQuery || undefined,
+          sort_field: sortField,
+          sort_order: sortOrder,
+        })
+        setImages(updated)
+      } catch (err) {
+        logError(`Failed to sync sort field and reload images: ${err}`)
+      }
+    }
+
+    syncAndReload()
+  }, [sortField])
+
+  // Sync sort order changes to SQLite and reload images
+  useEffect(() => {
+    const syncAndReload = async () => {
+      try {
+        await updateFilters({ page: 'index', sort_order: sortOrder })
+        const updated = await getAllImages({
+          search: searchQuery || undefined,
+          sort_field: sortField,
+          sort_order: sortOrder,
+        })
+        setImages(updated)
+      } catch (err) {
+        logError(`Failed to sync sort order and reload images: ${err}`)
+      }
+    }
+
+    syncAndReload()
+  }, [sortOrder])
+
+  // Check if any filters are active
+  const hasActiveFilters = searchQuery !== '' || sortField !== 'date' || sortOrder !== 'desc'
 
   // Check DB health on mount to detect orphaned records
   useEffect(() => {
@@ -220,6 +306,15 @@ function IndexPage() {
         onUpscaleSelected={handleUpscaleSelected}
         onRemoveBackgroundSelected={handleRemoveBackgroundSelected}
         isImporting={isImporting}
+        // Filter props
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        sortField={sortField}
+        sortOrder={sortOrder}
+        onSortFieldChange={setSortField}
+        onSortOrderChange={setSortOrder}
+        hasActiveFilters={hasActiveFilters}
+        onResetFilters={resetFilters}
       />
       <ImageGrid
         images={images}

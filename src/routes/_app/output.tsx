@@ -7,6 +7,8 @@ import {
   revealInExplorer,
   openFile,
   checkDbHealth,
+  getFilters,
+  updateFilters,
 } from '@/lib/tauri'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { error as logError } from '@/lib/logger'
@@ -20,15 +22,25 @@ import {
 } from '@/components/ui/context-menu'
 import { Button } from '@/components/ui/button'
 import { FolderSearch, Archive, Maximize2, FileImage, Scissors } from 'lucide-react'
+import { SearchBar } from '@/components/search-bar'
+import { SortDropdown } from '@/components/sort-dropdown'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { RotateCcw } from 'lucide-react'
 
 export const Route = createFileRoute('/_app/output')({
-  loader: async () => {
+  beforeLoad: async () => {
+    // Fetch filters before route renders to prevent flash of unfiltered content
+    const filters = await getFilters('output')
+    return { filters }
+  },
+  loader: async ({ context }) => {
+    const { filters } = context
     const [compressedImages, upscaledImages, bgRemovedImages] = await Promise.all([
       getAllCompressedImages(),
       getAllUpscaledImages(),
       getAllBgRemovedImages(),
     ])
-    return { compressedImages, upscaledImages, bgRemovedImages }
+    return { compressedImages, upscaledImages, bgRemovedImages, filters }
   },
   gcTime: 0,
   staleTime: 0,
@@ -178,9 +190,89 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
 
 function OutputPage() {
   const loaderData = Route.useLoaderData()
-  const [outputType, setOutputType] = useState<OutputType>('all')
+
+  // Initialize filter state from loader data (fetched via beforeLoad)
+  const [outputType, setOutputType] = useState<OutputType>(
+    loaderData.filters.output_type as OutputType
+  )
+  const [searchQuery, setSearchQuery] = useState(loaderData.filters.search_query)
+  const [sortField, setSortField] = useState<'name' | 'size' | 'date'>(
+    loaderData.filters.sort_field
+  )
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(loaderData.filters.sort_order)
 
   const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
+
+  // Sync output type changes to SQLite
+  useEffect(() => {
+    const syncToDb = async () => {
+      try {
+        await updateFilters({ page: 'output', output_type: outputType })
+      } catch (err) {
+        logError(`Failed to sync output type: ${err}`)
+      }
+    }
+    syncToDb()
+  }, [outputType])
+
+  // Sync search query changes to SQLite
+  useEffect(() => {
+    const syncToDb = async () => {
+      try {
+        await updateFilters({ page: 'output', search_query: searchQuery })
+      } catch (err) {
+        logError(`Failed to sync search query: ${err}`)
+      }
+    }
+    syncToDb()
+  }, [searchQuery])
+
+  // Sync sort field changes to SQLite
+  useEffect(() => {
+    const syncToDb = async () => {
+      try {
+        await updateFilters({ page: 'output', sort_field: sortField })
+      } catch (err) {
+        logError(`Failed to sync sort field: ${err}`)
+      }
+    }
+    syncToDb()
+  }, [sortField])
+
+  // Sync sort order changes to SQLite
+  useEffect(() => {
+    const syncToDb = async () => {
+      try {
+        await updateFilters({ page: 'output', sort_order: sortOrder })
+      } catch (err) {
+        logError(`Failed to sync sort order: ${err}`)
+      }
+    }
+    syncToDb()
+  }, [sortOrder])
+
+  // Check if any filters are active
+  const hasActiveFilters =
+    searchQuery !== '' || sortField !== 'date' || sortOrder !== 'desc' || outputType !== 'all'
+
+  // Reset all filters to defaults
+  const handleResetFilters = useCallback(async () => {
+    setOutputType('all')
+    setSearchQuery('')
+    setSortField('date')
+    setSortOrder('desc')
+    try {
+      await updateFilters({
+        page: 'output',
+        output_type: 'all',
+        search_query: '',
+        sort_field: 'date',
+        sort_order: 'desc',
+      })
+    } catch (err) {
+      logError(`Failed to reset filters: ${err}`)
+    }
+  }, [])
 
   // Check DB health on mount to detect orphaned records
   useEffect(() => {
@@ -193,7 +285,7 @@ function OutputPage() {
       .catch((err) => logError(`Failed to check DB health: ${err}`))
   }, [setDbNeedsSync])
 
-  // Memoized image processing
+  // Memoized image processing with filtering and sorting
   const images = useMemo(() => {
     const compressedList: OutputImage[] = loaderData.compressedImages
       .filter((img) => img.compressed_filepath)
@@ -235,16 +327,40 @@ function OutputPage() {
         displaySize: img.bg_removed_size ?? null,
       }))
 
+    let allImages: OutputImage[]
     if (outputType === 'all') {
-      return [...compressedList, ...upscaledList, ...bgRemovedList]
+      allImages = [...compressedList, ...upscaledList, ...bgRemovedList]
     } else if (outputType === 'compressed') {
-      return compressedList
+      allImages = compressedList
     } else if (outputType === 'upscaled') {
-      return upscaledList
+      allImages = upscaledList
     } else {
-      return bgRemovedList
+      allImages = bgRemovedList
     }
-  }, [loaderData, outputType])
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      allImages = allImages.filter((img) => img.filename.toLowerCase().includes(query))
+    }
+
+    allImages.sort((a, b) => {
+      let comparison
+      if (sortField === 'name') {
+        comparison = a.filename.localeCompare(b.filename)
+      } else if (sortField === 'size') {
+        const sizeA = a.displaySize ?? 0
+        const sizeB = b.displaySize ?? 0
+        comparison = sizeA - sizeB
+      } else {
+        // date - use id as proxy
+        comparison = a.id - b.id
+      }
+      return sortOrder === 'asc' ? comparison : -comparison
+    })
+
+    return allImages
+  }, [loaderData, outputType, searchQuery, sortField, sortOrder])
 
   const handleOutputTypeChange = useCallback((type: OutputType) => {
     setOutputType(type)
@@ -252,10 +368,10 @@ function OutputPage() {
 
   return (
     <>
-      <div className="flex gap-2 border-b px-4 py-2">
+      <div className="bg-background flex flex-wrap items-center gap-2 border-b p-3">
+        {/* Type filter buttons row */}
         <Button
-          variant={outputType === 'all' ? 'default' : 'outline'}
-          size="sm"
+          variant={outputType === 'all' ? 'default' : 'secondary'}
           onClick={() => handleOutputTypeChange('all')}
         >
           All (
@@ -265,32 +381,55 @@ function OutputPage() {
           )
         </Button>
         <Button
-          variant={outputType === 'compressed' ? 'default' : 'outline'}
-          size="sm"
+          variant={outputType === 'compressed' ? 'default' : 'secondary'}
           onClick={() => handleOutputTypeChange('compressed')}
         >
-          <Archive className="mr-2 h-4 w-4" />
-          Compressed ({loaderData.compressedImages.length})
+          <Archive className="h-4 w-4" />({loaderData.compressedImages.length})
         </Button>
         <Button
-          variant={outputType === 'upscaled' ? 'default' : 'outline'}
-          size="sm"
+          variant={outputType === 'upscaled' ? 'default' : 'secondary'}
           onClick={() => handleOutputTypeChange('upscaled')}
         >
-          <Maximize2 className="mr-2 h-4 w-4" />
-          Upscaled ({loaderData.upscaledImages.length})
+          <Maximize2 className="h-4 w-4" />({loaderData.upscaledImages.length})
         </Button>
         <Button
-          variant={outputType === 'bg_removed' ? 'default' : 'outline'}
-          size="sm"
+          variant={outputType === 'bg_removed' ? 'default' : 'secondary'}
           onClick={() => handleOutputTypeChange('bg_removed')}
         >
-          <Scissors className="mr-2 h-4 w-4" />
-          BG Removed ({loaderData.bgRemovedImages.length})
+          <Scissors className="h-4 w-4" />({loaderData.bgRemovedImages.length})
         </Button>
+        {/* Search and sort row */}
+        <div className="ml-auto flex items-center gap-2">
+          <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Enter file name" />
+          <SortDropdown
+            sortField={sortField}
+            sortOrder={sortOrder}
+            onSortFieldChange={setSortField}
+            onSortOrderChange={setSortOrder}
+          />
+          {hasActiveFilters && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-8 w-8"
+                    onClick={handleResetFilters}
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reset filters</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </div>
 
-      <section className="customScrollStyle relative h-full max-h-[calc(100vh-113px)] overflow-auto">
+      <section className="customScrollStyle relative h-full max-h-[calc(100vh-133px)] overflow-auto">
         {images.length === 0 ? (
           <div className="flex h-full flex-1 flex-col items-center justify-center gap-4">
             <div className="text-center">

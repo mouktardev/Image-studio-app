@@ -230,7 +230,7 @@ const ImageGridItem = memo(function ImageGridItem({
                     <TooltipContent side="right" className="max-w-[200px] p-3">
                       <div className="space-y-2 text-xs">
                         {image.compressed_size && (
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="text-green-600">Compressed:</span>
                             <span className="font-medium">
                               {formatBytes(image.compressed_size)}
@@ -238,7 +238,7 @@ const ImageGridItem = memo(function ImageGridItem({
                           </div>
                         )}
                         {upscaledVersions.length > 0 && (
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="text-blue-600">Upscaled:</span>
                             <span className="font-medium">
                               {upscaledVersions
@@ -248,7 +248,7 @@ const ImageGridItem = memo(function ImageGridItem({
                           </div>
                         )}
                         {image.bg_removed_size && (
-                          <div className="flex items-center justify-between">
+                          <div className="flex items-center justify-between gap-2">
                             <span className="text-purple-600">BG Removed:</span>
                             <span className="font-medium">
                               {formatBytes(image.bg_removed_size)}

@@ -1,18 +1,18 @@
 import { Toaster } from '@/components/ui/sonner'
 import { createRootRoute, Outlet } from '@tanstack/react-router'
-// import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
-// import { Inspector } from 'tinybase/ui-react-inspector'
+import { TanStackRouterDevtools } from '@tanstack/react-router-devtools'
+import { Inspector } from 'tinybase/ui-react-inspector'
 
 const RootLayout = () => (
   <>
     <Outlet />
     <Toaster />
-    {/* {import.meta.env.DEV && (
+    {import.meta.env.DEV && (
       <>
         <Inspector />
         <TanStackRouterDevtools />
       </>
-    )} */}
+    )}
   </>
 )
 

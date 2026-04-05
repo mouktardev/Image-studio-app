@@ -16,6 +16,7 @@ use crud::background_removal::{
     remove_background_by_ids, get_all_bg_removed_images, get_bg_removal_model_status,
     download_bg_removal_model
 };
+use crud::filters::{get_filters, update_filters, reset_filters};
 use sqlx::SqlitePool;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Manager, State};
@@ -135,7 +136,10 @@ pub fn run() {
             remove_background_by_ids,
             get_all_bg_removed_images,
             get_bg_removal_model_status,
-            download_bg_removal_model
+            download_bg_removal_model,
+            get_filters,
+            update_filters,
+            reset_filters
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

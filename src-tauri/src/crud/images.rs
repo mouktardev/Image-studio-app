@@ -26,6 +26,13 @@ pub struct Image {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ImageQueryParams {
+    pub search: Option<String>,
+    pub sort_field: String,  // 'name', 'size', 'date'
+    pub sort_order: String,  // 'asc', 'desc'
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AddImageData {
     pub filename: String,
     pub filepath: String,
@@ -51,8 +58,41 @@ pub struct ImportResult {
 }
 
 #[tauri::command]
-pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(
+pub async fn get_all_images(
+    state: State<'_, DbState>,
+    params: Option<ImageQueryParams>,
+) -> Result<Vec<Image>, String> {
+    let pool = &state.0;
+    
+    // Build the ORDER BY clause based on sort parameters
+    let order_clause = if let Some(ref p) = params {
+        let sort_field = match p.sort_field.as_str() {
+            "name" => "i.filename",
+            "size" => "i.size",
+            _ => "i.id", // date default
+        };
+        let sort_order = if p.sort_order == "asc" { "ASC" } else { "DESC" };
+        format!("ORDER BY {} {}", sort_field, sort_order)
+    } else {
+        "ORDER BY i.id DESC".to_string()
+    };
+    
+    // Build search clause if search query provided
+    let search_clause = if let Some(ref p) = params {
+        if let Some(ref search) = p.search {
+            if !search.is_empty() {
+                format!("WHERE LOWER(i.filename) LIKE LOWER('%{}%')", search.replace("'", "''"))
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    
+    let query = format!(
         "SELECT 
             i.id, i.filename, i.filepath, i.mimetype, i.size, i.width, i.height,
             ci.filepath as compressed_filepath, ci.size as compressed_size,
@@ -69,12 +109,17 @@ pub async fn get_all_images(state: State<'_, DbState>) -> Result<Vec<Image>, Str
          LEFT JOIN compressed_images ci ON ci.original_id = i.id
          LEFT JOIN upscaled_images u ON u.original_id = i.id
          LEFT JOIN bg_removed_images bi ON bi.original_id = i.id
+         {}
          GROUP BY i.id
-         ORDER BY i.id DESC"
-    )
-    .fetch_all(&state.0)
-    .await
-    .map_err(|e| e.to_string())?;
+         {}",
+        search_clause,
+        order_clause
+    );
+    
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(&query)
+        .fetch_all(pool)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let images: Vec<Image> = rows
         .into_iter()
