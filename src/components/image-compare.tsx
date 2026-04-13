@@ -46,7 +46,15 @@ export function ImageCompare({ image, compareType, open, onOpenChange }: ImageCo
             {isBgRemovedComparison ? 'background removed' : 'compressed'} images
           </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 flex-1 overflow-hidden rounded-lg bg-neutral-100 dark:bg-neutral-900">
+        <div
+          className="min-h-0 flex-1 overflow-hidden rounded-lg"
+          style={{
+            backgroundImage: `linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)`,
+            backgroundSize: '20px 20px',
+            backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+            backgroundColor: '#fff',
+          }}
+        >
           <ReactCompareSlider
             className="size-full object-contain"
             itemOne={
@@ -58,7 +66,15 @@ export function ImageCompare({ image, compareType, open, onOpenChange }: ImageCo
               </div>
             }
             itemTwo={
-              <div className="bg-card relative h-full w-full">
+              <div
+                className="relative h-full w-full"
+                style={{
+                  backgroundImage: `linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)`,
+                  backgroundSize: '20px 20px',
+                  backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+                  backgroundColor: '#fff',
+                }}
+              >
                 <ReactCompareSliderImage
                   src={convertFileSrc(compareFilepath!)}
                   alt={compareLabel}

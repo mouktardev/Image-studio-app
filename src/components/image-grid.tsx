@@ -7,6 +7,7 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
+  ContextMenuLabel,
 } from '@/components/ui/context-menu'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
@@ -14,7 +15,6 @@ import { formatBytes } from '@/lib/utils'
 import { type Image, revealInExplorer, openFile, deleteImage } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import {
-  Check,
   ExternalLink,
   FolderSearch,
   Trash2,
@@ -24,10 +24,11 @@ import {
   Maximize2,
   Scissors,
   Info,
+  Minimize2,
 } from 'lucide-react'
 import { useRow } from '@/schema/tinybase-schema'
 import { ImageCompare } from '@/components/image-compare'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 interface ImageGridProps {
   images: Image[]
@@ -36,6 +37,9 @@ interface ImageGridProps {
   onDelete: (id: number) => void
   onImport: () => void
   onDrop: (files: string[]) => void
+  onCompressClick?: (ids: number[]) => void
+  onUpscaleClick?: (ids: number[]) => void
+  onBgRemovalClick?: (ids: number[]) => void
 }
 
 // Memoized item renderer to prevent unnecessary re-renders
@@ -46,6 +50,9 @@ const ImageGridItem = memo(function ImageGridItem({
   onKeyDown,
   onDelete,
   onCompare,
+  onCompressClick,
+  onUpscaleClick,
+  onBgRemovalClick,
 }: {
   image: Image
   isSelected: boolean
@@ -53,6 +60,9 @@ const ImageGridItem = memo(function ImageGridItem({
   onKeyDown: (id: number, event: React.KeyboardEvent) => void
   onDelete: (id: number) => void
   onCompare: (image: Image, type: 'compressed' | 'bg_removed') => void
+  onCompressClick?: (ids: number[]) => void
+  onUpscaleClick?: (ids: number[]) => void
+  onBgRemovalClick?: (ids: number[]) => void
 }) {
   const [imageError, setImageError] = useState(false)
   const compressingState = useRow('compressions', image.id.toString())
@@ -161,12 +171,20 @@ const ImageGridItem = memo(function ImageGridItem({
           role="button"
           tabIndex={0}
           className={`group bg-card hover:border-foreground/50 relative flex flex-col overflow-hidden border transition-all ${
-            isSelected ? 'ring-primary ring-2' : ''
+            isSelected ? 'ring-2 ring-blue-600' : ''
           }`}
           onClick={handleClick}
           onKeyDown={handleKeyDownLocal}
         >
-          <div className="bg-muted relative aspect-4/3 w-full overflow-hidden">
+          <div
+            className="relative aspect-4/3 w-full overflow-hidden"
+            style={{
+              backgroundImage: `linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)`,
+              backgroundSize: '20px 20px',
+              backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+              backgroundColor: '#fff',
+            }}
+          >
             {!imageError ? (
               <img
                 src={convertFileSrc(image.filepath)}
@@ -183,14 +201,14 @@ const ImageGridItem = memo(function ImageGridItem({
 
             <div className="absolute top-2 right-2 left-2 flex items-start justify-between">
               <div className="flex max-w-[calc(100%-24px)] flex-wrap gap-1">
-                {isSelected && (
-                  <span className="bg-primary text-primary-foreground flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full">
+                {/* {isSelected && (
+                  <span className="text-primary-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-600">
                     <Check className="h-3 w-3" />
                   </span>
-                )}
+                )} */}
                 {image.compressed_filepath && (
                   <span
-                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-green-500 text-white"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500 text-white"
                     title="Compressed"
                   >
                     <Archive className="h-2.5 w-2.5" />
@@ -200,7 +218,7 @@ const ImageGridItem = memo(function ImageGridItem({
                   (version: { scale: number; filepath: string }, idx: number) => (
                     <span
                       key={idx}
-                      className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-blue-500 text-white"
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-blue-500 text-white"
                       title={`Upscaled ${version.scale}x`}
                     >
                       <Maximize2 className="h-2.5 w-2.5" />
@@ -209,7 +227,7 @@ const ImageGridItem = memo(function ImageGridItem({
                 )}
                 {image.bg_removed_filepath && (
                   <span
-                    className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-purple-500 text-white"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white"
                     title="Background Removed"
                   >
                     <Scissors className="h-2.5 w-2.5" />
@@ -220,45 +238,39 @@ const ImageGridItem = memo(function ImageGridItem({
               {(image.compressed_filepath ||
                 upscaledVersions.length > 0 ||
                 image.bg_removed_filepath) && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
-                        <Info className="h-3 w-3" />
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent side="right" className="max-w-[200px] p-3">
-                      <div className="space-y-2 text-xs">
-                        {image.compressed_size && (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-green-600">Compressed:</span>
-                            <span className="font-medium">
-                              {formatBytes(image.compressed_size)}
-                            </span>
-                          </div>
-                        )}
-                        {upscaledVersions.length > 0 && (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-blue-600">Upscaled:</span>
-                            <span className="font-medium">
-                              {upscaledVersions
-                                .map((v: { scale: number }) => `${v.scale}x`)
-                                .join(', ')}
-                            </span>
-                          </div>
-                        )}
-                        {image.bg_removed_size && (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-purple-600">BG Removed:</span>
-                            <span className="font-medium">
-                              {formatBytes(image.bg_removed_size)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
+                      <Info className="h-3 w-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-50 p-3">
+                    <div className="space-y-2 text-xs">
+                      {image.compressed_size && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-green-600">Compressed:</span>
+                          <span className="font-medium">{formatBytes(image.compressed_size)}</span>
+                        </div>
+                      )}
+                      {upscaledVersions.length > 0 && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-blue-600">Upscaled:</span>
+                          <span className="font-medium">
+                            {upscaledVersions
+                              .map((v: { scale: number }) => `${v.scale}x`)
+                              .join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      {image.bg_removed_size && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-purple-600">BG Removed:</span>
+                          <span className="font-medium">{formatBytes(image.bg_removed_size)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               )}
             </div>
 
@@ -292,7 +304,8 @@ const ImageGridItem = memo(function ImageGridItem({
         </div>
       </ContextMenuTrigger>
 
-      <ContextMenuContent>
+      <ContextMenuContent className="w-56">
+        <ContextMenuLabel>File</ContextMenuLabel>
         <ContextMenuItem onClick={handleOpen}>
           <ExternalLink className="mr-2 h-4 w-4" />
           Open Original
@@ -302,66 +315,100 @@ const ImageGridItem = memo(function ImageGridItem({
           Reveal Original
         </ContextMenuItem>
 
-        {image.compressed_filepath && (
+        {(onCompressClick || onUpscaleClick || onBgRemovalClick) && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem onClick={handleCompareCompressed}>
-              <Columns className="mr-2 h-4 w-4" />
-              Compare (Compressed)
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleOpenCompressed}>
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Open Compressed
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleRevealCompressed}>
-              <FolderSearch className="mr-2 h-4 w-4" />
-              Reveal Compressed
-            </ContextMenuItem>
+            <ContextMenuLabel>Actions</ContextMenuLabel>
+            {onCompressClick && (
+              <ContextMenuItem onClick={() => onCompressClick([image.id])}>
+                <Minimize2 className="mr-2 h-4 w-4" />
+                Compress
+              </ContextMenuItem>
+            )}
+            {onUpscaleClick && (
+              <ContextMenuItem onClick={() => onUpscaleClick([image.id])}>
+                <Maximize2 className="mr-2 h-4 w-4" />
+                Upscale
+              </ContextMenuItem>
+            )}
+            {onBgRemovalClick && (
+              <ContextMenuItem onClick={() => onBgRemovalClick([image.id])}>
+                <Scissors className="mr-2 h-4 w-4" />
+                Remove Background
+              </ContextMenuItem>
+            )}
           </>
         )}
 
-        {upscaledVersions.length > 0 && (
+        {(image.compressed_filepath ||
+          upscaledVersions.length > 0 ||
+          image.bg_removed_filepath) && (
           <>
             <ContextMenuSeparator />
-            {upscaledVersions.map((version: { scale: number; filepath: string }, idx: number) => (
-              <ContextMenuItem key={idx} onClick={() => openFile(version.filepath)}>
-                <ExternalLink className="mr-2 h-4 w-4" />
-                Open Upscaled {version.scale}x
-              </ContextMenuItem>
-            ))}
-            {upscaledVersions.map((version: { scale: number; filepath: string }, idx: number) => (
-              <ContextMenuItem
-                key={`reveal-${idx}`}
-                onClick={async () => {
-                  try {
-                    await revealInExplorer(version.filepath)
-                  } catch (err) {
-                    logError(`Failed to reveal upscaled file: ${err}`)
-                  }
-                }}
-              >
-                <FolderSearch className="mr-2 h-4 w-4" />
-                Reveal Upscaled {version.scale}x
-              </ContextMenuItem>
-            ))}
-          </>
-        )}
+            <ContextMenuLabel>Versions</ContextMenuLabel>
+            {image.compressed_filepath && (
+              <>
+                <ContextMenuItem onClick={handleCompareCompressed}>
+                  <Columns className="mr-2 h-4 w-4" />
+                  Compare (Compressed)
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleOpenCompressed}>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open Compressed
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleRevealCompressed}>
+                  <FolderSearch className="mr-2 h-4 w-4" />
+                  Reveal Compressed
+                </ContextMenuItem>
+              </>
+            )}
 
-        {image.bg_removed_filepath && (
-          <>
-            <ContextMenuSeparator />
-            <ContextMenuItem onClick={handleCompareBgRemoved}>
-              <Columns className="mr-2 h-4 w-4" />
-              Compare (Background Removed)
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleOpenBgRemoved}>
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Open Background Removed
-            </ContextMenuItem>
-            <ContextMenuItem onClick={handleRevealBgRemoved}>
-              <FolderSearch className="mr-2 h-4 w-4" />
-              Reveal Background Removed
-            </ContextMenuItem>
+            {upscaledVersions.length > 0 && (
+              <>
+                {upscaledVersions.map(
+                  (version: { scale: number; filepath: string }, idx: number) => (
+                    <ContextMenuItem key={idx} onClick={() => openFile(version.filepath)}>
+                      <ExternalLink className="mr-2 h-4 w-4" />
+                      Open Upscaled {version.scale}x
+                    </ContextMenuItem>
+                  )
+                )}
+                {upscaledVersions.map(
+                  (version: { scale: number; filepath: string }, idx: number) => (
+                    <ContextMenuItem
+                      key={`reveal-${idx}`}
+                      onClick={async () => {
+                        try {
+                          await revealInExplorer(version.filepath)
+                        } catch (err) {
+                          logError(`Failed to reveal upscaled file: ${err}`)
+                        }
+                      }}
+                    >
+                      <FolderSearch className="mr-2 h-4 w-4" />
+                      Reveal Upscaled {version.scale}x
+                    </ContextMenuItem>
+                  )
+                )}
+              </>
+            )}
+
+            {image.bg_removed_filepath && (
+              <>
+                <ContextMenuItem onClick={handleCompareBgRemoved}>
+                  <Columns className="mr-2 h-4 w-4" />
+                  Compare (Background Removed)
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleOpenBgRemoved}>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open Background Removed
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleRevealBgRemoved}>
+                  <FolderSearch className="mr-2 h-4 w-4" />
+                  Reveal Background Removed
+                </ContextMenuItem>
+              </>
+            )}
           </>
         )}
 
@@ -382,6 +429,9 @@ export function ImageGrid({
   onDelete,
   onImport,
   onDrop,
+  onCompressClick,
+  onUpscaleClick,
+  onBgRemovalClick,
 }: ImageGridProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [compareImage, setCompareImage] = useState<Image | null>(null)
@@ -476,6 +526,9 @@ export function ImageGrid({
                 setCompareImage(image)
                 setCompareType(type)
               }}
+              onCompressClick={onCompressClick}
+              onUpscaleClick={onUpscaleClick}
+              onBgRemovalClick={onBgRemovalClick}
             />
           ))}
         </div>

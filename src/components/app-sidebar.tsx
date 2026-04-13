@@ -65,11 +65,11 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={isHomeActive}
-                  tooltip={isCollapsed ? 'Compression' : undefined}
+                  tooltip={isCollapsed ? 'Images' : undefined}
                 >
                   <Link to="/">
                     <ImageDown className="h-4 w-4" />
-                    <span>Compression</span>
+                    <span>Images</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -77,11 +77,11 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={isOutputActive}
-                  tooltip={isCollapsed ? 'Output' : undefined}
+                  tooltip={isCollapsed ? 'Processed' : undefined}
                 >
                   <Link to="/output">
                     <Folder className="h-4 w-4" />
-                    <span>Output</span>
+                    <span>Processed</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

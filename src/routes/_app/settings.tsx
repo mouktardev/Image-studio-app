@@ -46,7 +46,7 @@ import {
   Scissors,
   Maximize2,
 } from 'lucide-react'
-import { toast } from 'sonner'
+import { toast } from '@/lib/notifications'
 import { useTheme } from '@/components/theme-provider'
 import { formatBytes } from '@/lib/utils'
 
@@ -255,15 +255,15 @@ function SettingsPage() {
                       try {
                         const deletedCount = await syncDatabase()
                         if (deletedCount > 0) {
-                          toast.success(`Cleaned up ${deletedCount} orphaned records.`)
+                          toast(`Cleaned up ${deletedCount} orphaned records.`, 'success')
                         } else {
-                          toast.info('Database is perfectly in sync with filesystem.')
+                          toast('Database is perfectly in sync with filesystem.', 'info')
                         }
                         // Invalidate router cache to refresh all route loaders
                         await router.invalidate()
                       } catch (err) {
                         logError(`Failed to sync database: ${err}`)
-                        toast.error('Failed to sync database')
+                        toast('Failed to sync database', 'error')
                       }
                     }}
                   >
@@ -512,10 +512,10 @@ function SettingsPage() {
                             await downloadModel(model)
                             const status = await getModelStatus(model)
                             setModelStatus(status)
-                            toast.success('Model downloaded successfully')
+                            toast('Model downloaded successfully', 'success')
                           } catch (err) {
                             logError(`Failed to download model: ${err}`)
-                            toast.error('Failed to download model')
+                            toast('Failed to download model', 'error')
                           } finally {
                             setIsDownloadingUpscale(false)
                           }
@@ -595,10 +595,10 @@ function SettingsPage() {
                             await downloadBgRemovalModel()
                             const status = await getBgRemovalModelStatus()
                             setBgRemovalModelStatus(status)
-                            toast.success('Model downloaded successfully')
+                            toast('Model downloaded successfully', 'success')
                           } catch (err) {
                             logError(`Failed to download model: ${err}`)
-                            toast.error('Failed to download model')
+                            toast('Failed to download model', 'error')
                           } finally {
                             setIsDownloadingBgRemoval(false)
                           }

@@ -21,10 +21,10 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Button } from '@/components/ui/button'
-import { FolderSearch, Archive, Maximize2, FileImage, Scissors } from 'lucide-react'
+import { FolderSearch, Archive, Maximize2, FileImage, Scissors, Minimize2 } from 'lucide-react'
 import { SearchBar } from '@/components/search-bar'
 import { SortDropdown } from '@/components/sort-dropdown'
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { RotateCcw } from 'lucide-react'
 
 export const Route = createFileRoute('/_app/output')({
@@ -109,7 +109,15 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
           tabIndex={0}
           className="group bg-card hover:border-foreground/50 relative flex flex-col overflow-hidden border transition-all"
         >
-          <div className="bg-muted relative aspect-4/3 w-full overflow-hidden">
+          <div
+            className="relative aspect-4/3 w-full overflow-hidden"
+            style={{
+              backgroundImage: `linear-gradient(45deg, #e5e5e5 25%, transparent 25%), linear-gradient(-45deg, #e5e5e5 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #e5e5e5 75%), linear-gradient(-45deg, transparent 75%, #e5e5e5 75%)`,
+              backgroundSize: '20px 20px',
+              backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
+              backgroundColor: '#fff',
+            }}
+          >
             {!imageError ? (
               <img
                 src={convertFileSrc(image.displayFilepath)}
@@ -384,19 +392,19 @@ function OutputPage() {
           variant={outputType === 'compressed' ? 'default' : 'secondary'}
           onClick={() => handleOutputTypeChange('compressed')}
         >
-          <Archive className="h-4 w-4" />({loaderData.compressedImages.length})
+          <Minimize2 className="size-4" />({loaderData.compressedImages.length})
         </Button>
         <Button
           variant={outputType === 'upscaled' ? 'default' : 'secondary'}
           onClick={() => handleOutputTypeChange('upscaled')}
         >
-          <Maximize2 className="h-4 w-4" />({loaderData.upscaledImages.length})
+          <Maximize2 className="size-4" />({loaderData.upscaledImages.length})
         </Button>
         <Button
           variant={outputType === 'bg_removed' ? 'default' : 'secondary'}
           onClick={() => handleOutputTypeChange('bg_removed')}
         >
-          <Scissors className="h-4 w-4" />({loaderData.bgRemovedImages.length})
+          <Scissors className="size-4" />({loaderData.bgRemovedImages.length})
         </Button>
         {/* Search and sort row */}
         <div className="ml-auto flex items-center gap-2">
@@ -408,23 +416,21 @@ function OutputPage() {
             onSortOrderChange={setSortOrder}
           />
           {hasActiveFilters && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-8 w-8"
-                    onClick={handleResetFilters}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Reset filters</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  onClick={handleResetFilters}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Reset filters</p>
+              </TooltipContent>
+            </Tooltip>
           )}
         </div>
       </div>

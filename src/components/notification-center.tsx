@@ -49,7 +49,7 @@ function NotificationItem({
   return (
     <div
       className={cn(
-        'flex items-start gap-3 rounded-md p-4 transition-colors',
+        'flex items-start gap-3 p-4 transition-colors',
         !notification.read && 'bg-muted'
       )}
     >

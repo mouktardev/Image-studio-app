@@ -27,6 +27,7 @@ import { error as logError } from '@/lib/logger'
 import { ImageTools } from '@/components/image-tools'
 import { useSetValueCallback } from '@/schema/tinybase-schema'
 import { useFilters } from '@/hooks/use-filters'
+import { CompressDialog, UpscaleDialog, BgRemovalDialog } from '@/components/dialogs'
 
 export const Route = createFileRoute('/_app/')({
   beforeLoad: async () => {
@@ -69,6 +70,10 @@ function IndexPage() {
   const { resetFilters } = useFilters('index')
 
   const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
+
+  // Dialog state
+  const [activeDialog, setActiveDialog] = useState<null | 'compress' | 'upscale' | 'bgremove'>(null)
+  const [dialogImageIds, setDialogImageIds] = useState<number[]>([])
 
   // Sync search query changes to SQLite and reload images
   useEffect(() => {
@@ -286,6 +291,27 @@ function IndexPage() {
     }
   }, [])
 
+  // Dialog open handlers
+  const openCompressDialog = useCallback((ids: number[]) => {
+    setDialogImageIds(ids)
+    setActiveDialog('compress')
+  }, [])
+
+  const openUpscaleDialog = useCallback((ids: number[]) => {
+    setDialogImageIds(ids)
+    setActiveDialog('upscale')
+  }, [])
+
+  const openBgRemovalDialog = useCallback((ids: number[]) => {
+    setDialogImageIds(ids)
+    setActiveDialog('bgremove')
+  }, [])
+
+  const closeDialog = useCallback(() => {
+    setActiveDialog(null)
+    setDialogImageIds([])
+  }, [])
+
   return (
     <>
       {isImporting && (
@@ -302,9 +328,9 @@ function IndexPage() {
         onSelectionChange={handleSelectionChange}
         onImport={handleImport}
         onDeleteSelected={handleDeleteSelected}
-        onCompressSelected={handleCompressSelected}
-        onUpscaleSelected={handleUpscaleSelected}
-        onRemoveBackgroundSelected={handleRemoveBackgroundSelected}
+        onCompressClick={() => openCompressDialog(selectedIds)}
+        onUpscaleClick={() => openUpscaleDialog(selectedIds)}
+        onBgRemovalClick={() => openBgRemovalDialog(selectedIds)}
         isImporting={isImporting}
         // Filter props
         searchQuery={searchQuery}
@@ -323,6 +349,32 @@ function IndexPage() {
         onDelete={handleDeleteSingle}
         onImport={handleImport}
         onDrop={handleDrop}
+        onCompressClick={openCompressDialog}
+        onUpscaleClick={openUpscaleDialog}
+        onBgRemovalClick={openBgRemovalDialog}
+      />
+
+      {/* Dialogs */}
+      <CompressDialog
+        images={images}
+        imageIds={dialogImageIds}
+        open={activeDialog === 'compress'}
+        onOpenChange={(open) => !open && closeDialog()}
+        onConfirm={handleCompressSelected}
+      />
+      <UpscaleDialog
+        images={images}
+        imageIds={dialogImageIds}
+        open={activeDialog === 'upscale'}
+        onOpenChange={(open) => !open && closeDialog()}
+        onConfirm={handleUpscaleSelected}
+      />
+      <BgRemovalDialog
+        images={images}
+        imageIds={dialogImageIds}
+        open={activeDialog === 'bgremove'}
+        onOpenChange={(open) => !open && closeDialog()}
+        onConfirm={handleRemoveBackgroundSelected}
       />
     </>
   )
