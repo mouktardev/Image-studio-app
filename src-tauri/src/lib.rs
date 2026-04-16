@@ -7,6 +7,7 @@ use tauri_plugin_log::{Target, TargetKind};
 use crud::images::{get_all_images, get_all_compressed_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, sync_database, get_image_metadata, check_db_health};
 use crud::notifications::{get_all_notifications, add_notification, mark_notification_read, delete_notification, mark_all_notifications_read, clear_all_notifications};
 use crud::selections::{get_selections, set_selections, add_selection, remove_selection, clear_selections};
+use crud::video_selections::{get_video_selections, set_video_selections, add_video_selection, remove_video_selection, clear_video_selections};
 use crud::compression::compress_images_by_ids;
 use crud::upscaling::{
     upscale_images_by_ids, get_all_upscaled_images, get_model_status, 
@@ -15,6 +16,11 @@ use crud::upscaling::{
 use crud::background_removal::{
     remove_background_by_ids, get_all_bg_removed_images, get_bg_removal_model_status,
     download_bg_removal_model
+};
+use crud::video_processing::{
+    import_videos, get_all_videos, delete_videos_by_ids, remove_video_bg,
+    get_all_bg_removed_videos, check_ffmpeg_status, download_ffmpeg,
+    cancel_video_bg_removal, CancelTokens
 };
 use crud::filters::{get_filters, update_filters, reset_filters};
 use sqlx::SqlitePool;
@@ -85,6 +91,8 @@ pub fn run() {
             #[cfg(desktop)]
             let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
 
+            app.handle().manage(CancelTokens(std::sync::Mutex::new(std::collections::HashMap::new())));
+
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 match init_db(&handle).await {
@@ -126,6 +134,11 @@ pub fn run() {
             add_selection,
             remove_selection,
             clear_selections,
+            get_video_selections,
+            set_video_selections,
+            add_video_selection,
+            remove_video_selection,
+            clear_video_selections,
             compress_images_by_ids,
             upscale_images_by_ids,
             get_all_upscaled_images,
@@ -137,6 +150,14 @@ pub fn run() {
             get_all_bg_removed_images,
             get_bg_removal_model_status,
             download_bg_removal_model,
+            import_videos,
+            get_all_videos,
+            delete_videos_by_ids,
+            remove_video_bg,
+            get_all_bg_removed_videos,
+            check_ffmpeg_status,
+            download_ffmpeg,
+            cancel_video_bg_removal,
             get_filters,
             update_filters,
             reset_filters

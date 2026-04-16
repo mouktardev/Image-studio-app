@@ -1,7 +1,9 @@
 pub mod images;
 pub mod notifications;
 pub mod selections;
+pub mod video_selections;
 pub mod compression;
 pub mod upscaling;
 pub mod background_removal;
+pub mod video_processing;
 pub mod filters;

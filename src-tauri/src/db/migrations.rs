@@ -11,6 +11,8 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_compressed_images_table(pool).await?;
     create_upscaled_images_table(pool).await?;
     create_bg_removed_images_table(pool).await?;
+    create_videos_table(pool).await?;
+    create_bg_removed_videos_table(pool).await?;
     create_filters_table(pool).await?;
     insert_default_settings(pool, app).await?;
     insert_default_swatches(pool).await?;
@@ -96,15 +98,15 @@ async fn insert_default_settings(pool: &SqlitePool, app: &AppHandle) -> Result<(
         .await
         .context("Failed to insert default 'upscale_model' setting")?;
 
-    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('upscale_gpu', 'true')")
-        .execute(pool)
-        .await
-        .context("Failed to insert default 'upscale_gpu' setting")?;
-
     sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('bg_removal_model', 'bria-rmbg-1.4')")
         .execute(pool)
         .await
         .context("Failed to insert default 'bg_removal_model' setting")?;
+
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('ffmpeg_downloaded', '0')")
+        .execute(pool)
+        .await
+        .context("Failed to insert default 'ffmpeg_downloaded' setting")?;
 
     Ok(())
 }
@@ -157,6 +159,19 @@ async fn create_selections_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create 'selections' table")?;
+
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS video_selections (
+            video_id INTEGER PRIMARY KEY NOT NULL,
+            selected_at INTEGER NOT NULL,
+            FOREIGN KEY (video_id) REFERENCES videos(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'video_selections' table")?;
 
     Ok(())
 }
@@ -243,6 +258,54 @@ async fn create_filters_table(pool: &SqlitePool) -> Result<()> {
     Ok(())
 }
 
+async fn create_videos_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            filename TEXT NOT NULL,
+            filepath TEXT NOT NULL UNIQUE,
+            mimetype TEXT,
+            size INTEGER,
+            width INTEGER,
+            height INTEGER,
+            duration REAL,
+            fps REAL
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'videos' table")?;
+
+    sqlx::query("CREATE UNIQUE INDEX IF NOT EXISTS idx_videos_filepath ON videos(filepath)")
+        .execute(pool)
+        .await
+        .context("Failed to create unique index on videos filepath")?;
+
+    Ok(())
+}
+
+async fn create_bg_removed_videos_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS bg_removed_videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            original_id INTEGER NOT NULL UNIQUE,
+            filepath TEXT NOT NULL,
+            size INTEGER,
+            model_used TEXT NOT NULL,
+            FOREIGN KEY (original_id) REFERENCES videos(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'bg_removed_videos' table")?;
+
+    Ok(())
+}
+
 async fn insert_default_filters(pool: &SqlitePool) -> Result<()> {
     // Default filters for index page
     sqlx::query(
@@ -259,6 +322,14 @@ async fn insert_default_filters(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to insert default output filters")?;
+
+    // Default filters for videos page
+    sqlx::query(
+        "INSERT OR IGNORE INTO filters (page, search_query, sort_field, sort_order, output_type) VALUES ('videos', '', 'date', 'desc', 'all')"
+    )
+    .execute(pool)
+    .await
+    .context("Failed to insert default videos filters")?;
 
     Ok(())
 }

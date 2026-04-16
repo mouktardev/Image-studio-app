@@ -12,7 +12,12 @@ import { Label } from '@/components/ui/label'
 import { Loader2, Download } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { error as logError } from '@/lib/logger'
-import { getModelStatus, downloadModel, getUpscaleSettings, setUpscaleSettings } from '@/lib/tauri'
+import {
+  getModelStatus,
+  downloadModel,
+  getUpscaleSettings,
+  setUpscaleSettings as saveUpscaleSettings,
+} from '@/lib/tauri'
 import type { Image } from '@/lib/tauri'
 
 const MODEL_SIZES: Record<string, number> = {
@@ -37,7 +42,6 @@ export function UpscaleDialog({
 }: UpscaleDialogProps) {
   const [upscaleScale, setUpscaleScale] = useState(4)
   const [upscaleModel, setUpscaleModel] = useState('realesrgan-x4')
-  const [gpuEnabled, setGpuEnabled] = useState(false)
   const [modelDownloaded, setModelDownloaded] = useState(false)
   const [modelSize, setModelSize] = useState<number | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -64,7 +68,6 @@ export function UpscaleDialog({
       const settings = await getUpscaleSettings()
       setUpscaleModel(settings.model)
       setUpscaleScale(settings.model.includes('x2') ? 2 : 4)
-      setGpuEnabled(settings.gpu_enabled)
     } catch (err) {
       logError(`Failed to load upscale settings: ${err}`)
     }
@@ -88,7 +91,7 @@ export function UpscaleDialog({
     setIsDownloading(true)
     try {
       await downloadModel(upscaleModel)
-      await setUpscaleSettings(upscaleModel, gpuEnabled)
+      await saveUpscaleSettings(upscaleModel)
       setModelDownloaded(true)
     } catch (err) {
       logError(`Failed to download model: ${err}`)
@@ -98,7 +101,7 @@ export function UpscaleDialog({
   }
 
   const handleConfirm = async () => {
-    await setUpscaleSettings(upscaleModel, gpuEnabled)
+    await saveUpscaleSettings(upscaleModel)
     onConfirm(imageIds, upscaleScale, upscaleModel)
     onOpenChange(false)
   }

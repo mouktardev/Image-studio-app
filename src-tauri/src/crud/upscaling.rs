@@ -37,7 +37,6 @@ pub struct ModelStatus {
 #[derive(Clone, Serialize)]
 pub struct UpscaleSettings {
     pub model: String,
-    pub gpu_enabled: bool,
     pub cache_dir: String,
 }
 
@@ -105,18 +104,12 @@ pub async fn get_upscale_settings(
         .await
         .unwrap_or(Some("realesrgan-x4".to_string()));
 
-    let gpu: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'upscale_gpu'")
-        .fetch_optional(&pool)
-        .await
-        .unwrap_or(Some("true".to_string()));
-
     let cache_dir = get_hf_cache_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_default();
 
     Ok(UpscaleSettings {
         model: model.unwrap_or_else(|| "realesrgan-x4".to_string()),
-        gpu_enabled: gpu.unwrap_or_else(|| "true".to_string()) == "true",
         cache_dir,
     })
 }
@@ -125,18 +118,11 @@ pub async fn get_upscale_settings(
 pub async fn set_upscale_settings(
     state: State<'_, DbState>,
     model: String,
-    gpu_enabled: bool,
 ) -> Result<(), String> {
     let pool = state.0.clone();
     
     sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('upscale_model', ?)")
         .bind(&model)
-        .execute(&pool)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('upscale_gpu', ?)")
-        .bind(if gpu_enabled { "true" } else { "false" })
         .execute(&pool)
         .await
         .map_err(|e| e.to_string())?;
@@ -251,7 +237,6 @@ fn run_upscaling_inference(
     input_path: &PathBuf,
     output_path: &PathBuf,
     model_path: &PathBuf,
-    _gpu_enabled: bool,
     app: Option<AppHandle>,
     image_id: i64,
 ) -> Result<()> {
@@ -335,13 +320,6 @@ pub async fn upscale_images_by_ids(
     // Use internal helper function instead of Tauri command
     let (model_path, _model_size) = check_model_downloaded(&model)?;
     
-    let gpu_setting: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'upscale_gpu'")
-        .fetch_optional(&pool)
-        .await
-        .unwrap_or(Some("true".to_string()));
-    
-    let gpu_enabled = gpu_setting.unwrap_or_else(|| "true".to_string()) == "true";
-    
     let output_dir_setting: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'output'")
         .fetch_optional(&pool)
         .await
@@ -406,7 +384,6 @@ pub async fn upscale_images_by_ids(
                             &orig_path,
                             &temp_filepath_clone,
                             &model_path_clone,
-                            gpu_enabled,
                             Some(app_for_blocking),
                             id,
                         )

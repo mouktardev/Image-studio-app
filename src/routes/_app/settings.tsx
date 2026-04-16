@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   initDatabase,
   dbExists,
@@ -15,7 +15,8 @@ import {
   downloadModel,
   getBgRemovalModelStatus,
   downloadBgRemovalModel,
-  type UpscaleSettings,
+  checkFfmpegStatus,
+  downloadFfmpeg,
 } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
@@ -41,121 +42,93 @@ import {
   Moon,
   Monitor,
   Download,
-  Cpu,
-  Zap,
   Scissors,
   Maximize2,
+  Video,
 } from 'lucide-react'
 import { toast } from '@/lib/notifications'
 import { useTheme } from '@/components/theme-provider'
 import { formatBytes } from '@/lib/utils'
 
 const MODEL_SIZES: Record<string, number> = {
-  'realesrgan-x2': 54 * 1024 * 1024, // Swin2SR-classical-sr-x2-64: ~54 MB
-  'realesrgan-x4': 54 * 1024 * 1024, // swin2SR-realworld-sr-x4: ~54 MB
+  'realesrgan-x2': 54 * 1024 * 1024,
+  'realesrgan-x4': 54 * 1024 * 1024,
 }
 
-const BG_REMOVAL_MODEL_SIZE = 176 * 1024 * 1024 // BRIA RMBG-1.4 ONNX: ~176 MB
+const BG_REMOVAL_MODEL_SIZE = 176 * 1024 * 1024
 
 export const Route = createFileRoute('/_app/settings')({
+  loader: async () => {
+    const [
+      dbInitialized,
+      outputPath,
+      dbPathResult,
+      upscaleSettings,
+      modelStatus,
+      bgRemovalStatus,
+      ffmpegStatus,
+      updateChecksEnabled,
+    ] = await Promise.all([
+      dbExists(),
+      getSetting('output'),
+      getDbPath(),
+      getUpscaleSettings(),
+      getModelStatus((await getUpscaleSettings()).model),
+      getBgRemovalModelStatus(),
+      checkFfmpegStatus(),
+      getSetting('update_checks_enabled'),
+    ])
+
+    return {
+      dbInitialized,
+      outputPath,
+      dbPath: dbPathResult,
+      upscaleSettings,
+      modelStatus,
+      bgRemovalStatus,
+      ffmpegStatus,
+      updateChecksEnabled: updateChecksEnabled !== 'false',
+    }
+  },
+  gcTime: 0,
+  staleTime: 0,
   component: SettingsPage,
 })
 
 function SettingsPage() {
   const router = useRouter()
+  const loaderData = Route.useLoaderData()
   const { theme, setTheme } = useTheme()
-  const [isInitialized, setIsInitialized] = useState<boolean | null>(null)
-  const [outputPath, setOutputPath] = useState<string>('')
-  const [dbPath, setDbPath] = useState<string>('')
-  const [isLoading, setIsLoading] = useState(true)
+
+  const [isInitialized, setIsInitialized] = useState(loaderData.dbInitialized)
+  const [outputPath, setOutputPath] = useState(loaderData.outputPath || '')
+  const [dbPath, setDbPath] = useState(loaderData.dbPath || '')
   const [isInitializing, setIsInitializing] = useState(false)
   const [isChangingFolder, setIsChangingFolder] = useState(false)
-  const [updateChecksEnabled, setUpdateChecksEnabled] = useState(true)
+  const [updateChecksEnabled, setUpdateChecksEnabled] = useState(loaderData.updateChecksEnabled)
 
-  // AI Image Processing - Upscale
-  const [upscaleSettings, setUpscaleSettings] = useState<UpscaleSettings | null>(null)
-  const [modelStatus, setModelStatus] = useState<{
-    name: string
-    downloaded: boolean
-    path: string
-    size: number | null
-  } | null>(null)
+  const [upscaleSettings, setUpscaleSettings] = useState(loaderData.upscaleSettings)
+  const [modelStatus, setModelStatus] = useState(loaderData.modelStatus)
   const [isDownloadingUpscale, setIsDownloadingUpscale] = useState(false)
 
-  // AI Image Processing - Background Removal
-  const [bgRemovalModelStatus, setBgRemovalModelStatus] = useState<{
-    name: string
-    downloaded: boolean
-    path: string
-    size: number | null
-  } | null>(null)
+  const [bgRemovalModelStatus, setBgRemovalModelStatus] = useState(loaderData.bgRemovalStatus)
   const [isDownloadingBgRemoval, setIsDownloadingBgRemoval] = useState(false)
 
-  useEffect(() => {
-    loadSettings()
-    loadUpdateCheckSetting()
-    loadUpscaleSettings()
-    loadBgRemovalModelStatus()
-  }, [])
-
-  async function loadUpscaleSettings() {
-    try {
-      const settings = await getUpscaleSettings()
-      setUpscaleSettings(settings)
-      const status = await getModelStatus(settings.model)
-      setModelStatus(status)
-    } catch (err) {
-      logError(`Failed to load upscale settings: ${err}`)
-    }
-  }
-
-  async function loadBgRemovalModelStatus() {
-    try {
-      const status = await getBgRemovalModelStatus()
-      setBgRemovalModelStatus(status)
-    } catch (err) {
-      logError(`Failed to load background removal model status: ${err}`)
-    }
-  }
-
-  async function loadUpdateCheckSetting() {
-    try {
-      const enabled = await getSetting('update_checks_enabled')
-      setUpdateChecksEnabled(enabled !== 'false')
-    } catch (err) {
-      logError(`Failed to load update check setting: ${err}`)
-    }
-  }
-
-  async function loadSettings() {
-    setIsLoading(true)
-    try {
-      const exists = await dbExists()
-      setIsInitialized(exists)
-
-      if (exists) {
-        const path = await getSetting('output')
-        if (path) {
-          setOutputPath(path)
-        }
-        const db = await getDbPath()
-        if (db) {
-          setDbPath(db)
-        }
-      }
-    } catch (err) {
-      logError(`Failed to load settings: ${err}`)
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  const [ffmpegStatus, setFfmpegStatus] = useState(loaderData.ffmpegStatus)
+  const [isDownloadingFfmpeg, setIsDownloadingFfmpeg] = useState(false)
 
   async function handleInitDatabase() {
     setIsInitializing(true)
     try {
       await initDatabase()
       setIsInitialized(true)
-      await loadSettings()
+      const exists = await dbExists()
+      if (exists) {
+        const path = await getSetting('output')
+        if (path) setOutputPath(path)
+        const db = await getDbPath()
+        if (db) setDbPath(db)
+      }
     } catch (err) {
       logError(`Failed to initialize database: ${err}`)
     } finally {
@@ -194,14 +167,6 @@ function SettingsPage() {
     } finally {
       setIsChangingFolder(false)
     }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center p-8">
-        <RefreshCw className="h-6 w-6 animate-spin" />
-      </div>
-    )
   }
 
   return (
@@ -259,7 +224,6 @@ function SettingsPage() {
                         } else {
                           toast('Database is perfectly in sync with filesystem.', 'info')
                         }
-                        // Invalidate router cache to refresh all route loaders
                         await router.invalidate()
                       } catch (err) {
                         logError(`Failed to sync database: ${err}`)
@@ -387,9 +351,7 @@ function SettingsPage() {
         <Card className="my-4">
           <CardHeader>
             <CardTitle>AI Image Processing</CardTitle>
-            <CardDescription>
-              Configure AI-powered image enhancement models and device preferences
-            </CardDescription>
+            <CardDescription>Configure AI-powered image enhancement models</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Upscale Section */}
@@ -408,10 +370,9 @@ function SettingsPage() {
                   <Select
                     value={upscaleSettings?.model || 'realesrgan-x4'}
                     onValueChange={async (model) => {
-                      const gpu = upscaleSettings?.gpu_enabled || false
                       try {
-                        await saveUpscaleSettings(model, gpu)
-                        setUpscaleSettings({ ...upscaleSettings!, model, gpu_enabled: gpu })
+                        await saveUpscaleSettings(model)
+                        setUpscaleSettings({ ...upscaleSettings!, model })
                         const status = await getModelStatus(model)
                         setModelStatus(status)
                       } catch (err) {
@@ -433,44 +394,6 @@ function SettingsPage() {
                       </SelectItem>
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-sm">Processing Device</Label>
-                  <div className="flex gap-2">
-                    <Button
-                      variant={!upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={async () => {
-                        const model = upscaleSettings?.model || 'realesrgan-x4'
-                        try {
-                          await saveUpscaleSettings(model, false)
-                          setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: false })
-                        } catch (err) {
-                          logError(`Failed to save GPU setting: ${err}`)
-                        }
-                      }}
-                    >
-                      <Cpu className="mr-2 h-4 w-4" />
-                      CPU
-                    </Button>
-                    <Button
-                      variant={upscaleSettings?.gpu_enabled ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={async () => {
-                        const model = upscaleSettings?.model || 'realesrgan-x4'
-                        try {
-                          await saveUpscaleSettings(model, true)
-                          setUpscaleSettings({ ...upscaleSettings!, gpu_enabled: true })
-                        } catch (err) {
-                          logError(`Failed to save GPU setting: ${err}`)
-                        }
-                      }}
-                    >
-                      <Zap className="mr-2 h-4 w-4" />
-                      GPU
-                    </Button>
-                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -606,6 +529,93 @@ function SettingsPage() {
                       >
                         <Download className="mr-2 h-4 w-4" />
                         {isDownloadingBgRemoval ? 'Downloading...' : 'Download'}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Separator className="my-6" />
+
+        {/* Video Processing Section */}
+        <Card className="my-4">
+          <CardHeader>
+            <CardTitle>Video Processing</CardTitle>
+            <CardDescription>
+              Configure video processing tools for background removal
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Video className="text-muted-foreground h-5 w-5" />
+                <h3 className="font-semibold">Video Background Removal</h3>
+                <span className="text-muted-foreground text-xs">
+                  AI-powered video background removal (requires FFmpeg + AI model)
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label className="text-sm">FFmpeg Status</Label>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={ffmpegStatus?.available ? 'default' : 'secondary'}>
+                      {ffmpegStatus?.available ? 'Available' : 'Not Installed'}
+                    </Badge>
+                    {ffmpegStatus?.available && ffmpegStatus.source === 'system' && (
+                      <Badge variant="outline">System</Badge>
+                    )}
+                    {ffmpegStatus?.available && ffmpegStatus.source === 'sidecar' && (
+                      <Badge variant="outline">Downloaded</Badge>
+                    )}
+                    <span className="text-muted-foreground text-xs">
+                      {ffmpegStatus?.available && ffmpegStatus?.size
+                        ? formatBytes(ffmpegStatus.size)
+                        : ffmpegStatus?.available
+                          ? ''
+                          : '~80 MB download'}
+                    </span>
+                    {ffmpegStatus?.available && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (ffmpegStatus?.path) {
+                            revealInExplorer(ffmpegStatus.path).catch((err) =>
+                              logError(`Failed to reveal FFmpeg: ${err}`)
+                            )
+                          }
+                        }}
+                      >
+                        <EyeIcon className="mr-2 h-4 w-4" />
+                        Reveal
+                      </Button>
+                    )}
+                    {!ffmpegStatus?.available && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={isDownloadingFfmpeg}
+                        onClick={async () => {
+                          setIsDownloadingFfmpeg(true)
+                          try {
+                            await downloadFfmpeg()
+                            const status = await checkFfmpegStatus()
+                            setFfmpegStatus(status)
+                            toast('FFmpeg downloaded successfully', 'success')
+                          } catch (err) {
+                            logError(`Failed to download FFmpeg: ${err}`)
+                            toast('Failed to download FFmpeg', 'error')
+                          } finally {
+                            setIsDownloadingFfmpeg(false)
+                          }
+                        }}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        {isDownloadingFfmpeg ? 'Downloading...' : 'Download'}
                       </Button>
                     )}
                   </div>

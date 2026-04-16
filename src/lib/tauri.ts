@@ -140,7 +140,6 @@ export async function compressImagesByIds(ids: number[], quality: number): Promi
 
 export interface UpscaleSettings {
   model: string
-  gpu_enabled: boolean
   models_dir: string
 }
 
@@ -155,8 +154,8 @@ export async function getUpscaleSettings(): Promise<UpscaleSettings> {
   return invoke<UpscaleSettings>('get_upscale_settings')
 }
 
-export async function setUpscaleSettings(model: string, gpuEnabled: boolean): Promise<void> {
-  return invoke<void>('set_upscale_settings', { model, gpuEnabled })
+export async function setUpscaleSettings(model: string): Promise<void> {
+  return invoke<void>('set_upscale_settings', { model })
 }
 
 export async function getModelStatus(model: string): Promise<ModelStatus> {
@@ -203,6 +202,95 @@ export async function getAllBgRemovedImages(): Promise<Image[]> {
   return invoke<Image[]>('get_all_bg_removed_images')
 }
 
+// Video Processing API
+export interface Video {
+  id: number
+  filename: string
+  filepath: string
+  mimetype: string | null
+  size: number | null
+  width: number | null
+  height: number | null
+  duration: number | null
+  fps: number | null
+  bg_removed_filepath?: string | null
+  bg_removed_size?: number | null
+  bg_removed_model?: string | null
+}
+
+export interface FfmpegStatus {
+  available: boolean
+  path: string
+  size: number | null
+  source: string
+}
+
+export interface VideoBgRemovalProgress {
+  id: number
+  progress: number
+  message: string
+  eta_seconds: number | null
+}
+
+export async function selectVideoFiles(): Promise<string[] | null> {
+  const selected = await open({
+    multiple: true,
+    title: 'Select Videos',
+    filters: [
+      {
+        name: 'Videos',
+        extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v', '3gp'],
+      },
+    ],
+  })
+  if (!selected) return null
+  return Array.isArray(selected) ? selected : [selected]
+}
+
+export interface VideoImportResult {
+  imported: number
+  duplicates: number
+  failed: number
+}
+
+export async function importVideos(paths: string[]): Promise<VideoImportResult> {
+  return invoke<VideoImportResult>('import_videos', { paths })
+}
+
+export async function getAllVideos(params?: VideoQueryParams): Promise<Video[]> {
+  return invoke<Video[]>('get_all_videos', { params: params ?? null })
+}
+
+export async function deleteVideosByIds(ids: number[]): Promise<void> {
+  return invoke<void>('delete_videos_by_ids', { ids })
+}
+
+export interface VideoBgRemovalResult {
+  processed: number
+  failed: number
+  cancelled: number
+}
+
+export async function removeVideoBg(ids: number[]): Promise<VideoBgRemovalResult> {
+  return invoke<VideoBgRemovalResult>('remove_video_bg', { ids })
+}
+
+export async function getAllBgRemovedVideos(): Promise<Video[]> {
+  return invoke<Video[]>('get_all_bg_removed_videos')
+}
+
+export async function checkFfmpegStatus(): Promise<FfmpegStatus> {
+  return invoke<FfmpegStatus>('check_ffmpeg_status')
+}
+
+export async function downloadFfmpeg(): Promise<string> {
+  return invoke<string>('download_ffmpeg')
+}
+
+export async function cancelVideoBgRemoval(ids: number[]): Promise<void> {
+  return invoke<void>('cancel_video_bg_removal', { ids })
+}
+
 // Filters API
 export interface FilterState {
   page: string
@@ -221,6 +309,12 @@ export interface UpdateFilterRequest {
 }
 
 export interface ImageQueryParams {
+  search?: string
+  sort_field: 'name' | 'size' | 'date'
+  sort_order: 'asc' | 'desc'
+}
+
+export interface VideoQueryParams {
   search?: string
   sort_field: 'name' | 'size' | 'date'
   sort_order: 'asc' | 'desc'

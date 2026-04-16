@@ -79,6 +79,27 @@ export async function clearSelections(): Promise<void> {
   return invoke<void>('clear_selections')
 }
 
+// Video selections
+export async function getVideoSelections(): Promise<number[]> {
+  return invoke<number[]>('get_video_selections')
+}
+
+export async function setVideoSelections(videoIds: number[]): Promise<void> {
+  return invoke<void>('set_video_selections', { videoIds })
+}
+
+export async function addVideoSelection(videoId: number): Promise<void> {
+  return invoke<void>('add_video_selection', { videoId })
+}
+
+export async function removeVideoSelection(videoId: number): Promise<void> {
+  return invoke<void>('remove_video_selection', { videoId })
+}
+
+export async function clearVideoSelections(): Promise<void> {
+  return invoke<void>('clear_video_selections')
+}
+
 let notificationCountCallback: (() => void) | null = null
 
 export function setNotificationCountCallback(callback: () => void) {

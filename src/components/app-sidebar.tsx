@@ -12,7 +12,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
-import { ImageDown, SettingsIcon, TerminalIcon, Folder } from 'lucide-react'
+import { ImageDown, SettingsIcon, TerminalIcon, Folder, Video } from 'lucide-react'
 import { useValue, useSetPartialValuesCallback } from '@/schema/tinybase-schema'
 import packageJson from '../../package.json'
 
@@ -30,6 +30,7 @@ export function AppSidebar() {
   }))
 
   const isHomeActive = location.pathname === '/'
+  const isVideosActive = location.pathname === '/videos'
   const isOutputActive = location.pathname === '/output'
   const isSettingsActive = location.pathname === '/settings'
 
@@ -82,6 +83,18 @@ export function AppSidebar() {
                   <Link to="/output">
                     <Folder className="h-4 w-4" />
                     <span>Processed</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isVideosActive}
+                  tooltip={isCollapsed ? 'Videos' : undefined}
+                >
+                  <Link to="/videos">
+                    <Video className="h-4 w-4" />
+                    <span>Videos</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -176,3 +176,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - [ ] Add advanced **Format Conversion** options.
 - [ ] Add image editor.
+- [ ] video edits using ffmpeg.

@@ -10,7 +10,7 @@ export interface FilterState {
   output_type: 'all' | 'compressed' | 'upscaled' | 'bg_removed'
 }
 
-export function useFilters(page: 'index' | 'output') {
+export function useFilters(page: 'index' | 'output' | 'videos') {
   const [filters, setFilters] = useState<FilterState>({
     page,
     search_query: '',

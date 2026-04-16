@@ -17,6 +17,11 @@ export const tablesSchema = {
     progress: { type: 'number' },
     message: { type: 'string' },
   },
+  video_bg_removals: {
+    progress: { type: 'number' },
+    message: { type: 'string' },
+    eta_seconds: { type: 'number' },
+  },
   logs: {
     level: { type: 'number' },
     message: { type: 'string' },

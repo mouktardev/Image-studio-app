@@ -24,7 +24,7 @@ function main() {
     execSync(`git push origin ${tag}`, { stdio: 'inherit' })
     console.log(`✓ Pushed tag to origin: ${tag}`)
     console.log(`\nGitHub Actions workflow triggered!`)
-    console.log(`Check: https://github.com/${process.env.GITHUB_REPOSITORY || 'your-repo'}/actions`)
+    console.log(`Check: https://github.com/mouktardev/image-studio-app/actions`)
   } catch (error) {
     console.error('\n✗ Failed to push tag')
     console.error('Make sure you have committed your version bump first!')

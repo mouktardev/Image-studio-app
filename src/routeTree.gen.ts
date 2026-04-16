@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppVideosRouteImport } from './routes/_app/videos'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppOutputRouteImport } from './routes/_app/output'
 
@@ -21,6 +22,11 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVideosRoute = AppVideosRouteImport.update({
+  id: '/videos',
+  path: '/videos',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -38,10 +44,12 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/output': typeof AppOutputRoute
   '/settings': typeof AppSettingsRoute
+  '/videos': typeof AppVideosRoute
 }
 export interface FileRoutesByTo {
   '/output': typeof AppOutputRoute
   '/settings': typeof AppSettingsRoute
+  '/videos': typeof AppVideosRoute
   '/': typeof AppIndexRoute
 }
 export interface FileRoutesById {
@@ -49,14 +57,21 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_app/output': typeof AppOutputRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/videos': typeof AppVideosRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/output' | '/settings'
+  fullPaths: '/' | '/output' | '/settings' | '/videos'
   fileRoutesByTo: FileRoutesByTo
-  to: '/output' | '/settings' | '/'
-  id: '__root__' | '/_app' | '/_app/output' | '/_app/settings' | '/_app/'
+  to: '/output' | '/settings' | '/videos' | '/'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/_app/output'
+    | '/_app/settings'
+    | '/_app/videos'
+    | '/_app/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -79,6 +94,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/videos': {
+      id: '/_app/videos'
+      path: '/videos'
+      fullPath: '/videos'
+      preLoaderRoute: typeof AppVideosRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -99,12 +121,14 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppOutputRoute: typeof AppOutputRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppVideosRoute: typeof AppVideosRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppOutputRoute: AppOutputRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppVideosRoute: AppVideosRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
