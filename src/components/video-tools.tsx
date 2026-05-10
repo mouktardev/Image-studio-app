@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Trash2, Scissors, Upload, Loader2 } from 'lucide-react'
+import { Trash2, Scissors, Upload, Loader2, Minimize2 } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import type { Video } from '@/lib/tauri'
 import { SearchBar } from '@/components/search-bar'
@@ -24,6 +24,7 @@ interface VideoToolsProps {
   onBgRemovalClick: () => void
   onDeleteClick: () => void
   onImportClick: () => void
+  onCompressClick?: () => void
   isImporting?: boolean
   searchQuery?: string
   onSearchChange?: (value: string) => void
@@ -42,6 +43,7 @@ export function VideoTools({
   onBgRemovalClick,
   onDeleteClick,
   onImportClick,
+  onCompressClick,
   isImporting = false,
   searchQuery = '',
   onSearchChange,
@@ -83,6 +85,17 @@ export function VideoTools({
         </TooltipTrigger>
         <TooltipContent>Import Videos</TooltipContent>
       </Tooltip>
+
+      {selectedIds.length > 0 && onCompressClick && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={onCompressClick}>
+              <Minimize2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Compress ({selectedIds.length})</TooltipContent>
+        </Tooltip>
+      )}
 
       {selectedIds.length > 0 && (
         <>

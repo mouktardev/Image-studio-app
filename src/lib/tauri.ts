@@ -216,6 +216,8 @@ export interface Video {
   bg_removed_filepath?: string | null
   bg_removed_size?: number | null
   bg_removed_model?: string | null
+  compressed_filepath?: string | null
+  compressed_size?: number | null
 }
 
 export interface FfmpegStatus {
@@ -291,13 +293,35 @@ export async function cancelVideoBgRemoval(ids: number[]): Promise<void> {
   return invoke<void>('cancel_video_bg_removal', { ids })
 }
 
+export async function getAllCompressedVideos(): Promise<Video[]> {
+  return invoke<Video[]>('get_all_compressed_videos')
+}
+
+export interface CompressionPreset {
+  name: string
+  crf: number
+  preset: string
+}
+
+export async function getCompressionPresets(): Promise<CompressionPreset[]> {
+  return invoke<CompressionPreset[]>('get_compression_presets')
+}
+
+export async function compressVideosByIds(
+  ids: number[],
+  quality: number,
+  preset: string
+): Promise<number> {
+  return invoke<number>('compress_videos_by_ids', { ids, quality, preset })
+}
+
 // Filters API
 export interface FilterState {
   page: string
   search_query: string
   sort_field: 'name' | 'size' | 'date'
   sort_order: 'asc' | 'desc'
-  output_type: 'all' | 'compressed' | 'upscaled' | 'bg_removed'
+  output_type: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
 }
 
 export interface UpdateFilterRequest {
@@ -305,7 +329,7 @@ export interface UpdateFilterRequest {
   search_query?: string
   sort_field?: 'name' | 'size' | 'date'
   sort_order?: 'asc' | 'desc'
-  output_type?: 'all' | 'compressed' | 'upscaled' | 'bg_removed'
+  output_type?: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
 }
 
 export interface ImageQueryParams {

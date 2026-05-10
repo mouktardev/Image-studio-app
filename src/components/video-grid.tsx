@@ -2,7 +2,6 @@ import { useState, useCallback, memo } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { type Video, revealInExplorer, openFile, cancelVideoBgRemoval } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
-import { formatBytes } from '@/lib/utils'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -11,7 +10,8 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Progress } from '@/components/ui/progress'
-import { Scissors, Play, Trash2, ExternalLink, FolderSearch } from 'lucide-react'
+import { Play, Trash2, ExternalLink, FolderSearch, Minimize2, Info } from 'lucide-react'
+import { formatBytes } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRow } from '@/schema/tinybase-schema'
 
@@ -20,7 +20,7 @@ interface VideoGridProps {
   selectedIds: number[]
   onSelectionChange: (ids: number[]) => void
   onDelete: (id: number) => void
-  onBgRemovalClick?: (ids: number[]) => void
+  onCompressClick?: (ids: number[]) => void
 }
 
 const VideoGridItem = memo(function VideoGridItem({
@@ -29,17 +29,18 @@ const VideoGridItem = memo(function VideoGridItem({
   onSelect,
   onKeyDown,
   onDelete,
-  onBgRemovalClick,
+  onCompressClick,
 }: {
   video: Video
   isSelected: boolean
   onSelect: (id: number, event: React.MouseEvent | React.KeyboardEvent) => void
   onKeyDown: (id: number, event: React.KeyboardEvent) => void
   onDelete: (id: number) => void
-  onBgRemovalClick?: (ids: number[]) => void
+  onCompressClick?: (ids: number[]) => void
 }) {
   const [thumbnailError, setThumbnailError] = useState(false)
   const bgRemovalState = useRow('video_bg_removals', video.id.toString())
+  const compressionState = useRow('video_compressions', video.id.toString())
 
   const src = thumbnailError ? '' : convertFileSrc(video.filepath)
 
@@ -56,19 +57,30 @@ const VideoGridItem = memo(function VideoGridItem({
   const isProcessing =
     bgRemovalState?.progress != null && bgRemovalState.progress > 0 && bgRemovalState.progress < 100
 
-  const etaSeconds = bgRemovalState?.eta_seconds
-    ? bgRemovalState.eta_seconds > 0
-      ? bgRemovalState.eta_seconds
+  const isCompressing =
+    compressionState?.progress != null &&
+    compressionState.progress > 0 &&
+    compressionState.progress < 100
+
+  const etaSeconds = isCompressing
+    ? null
+    : bgRemovalState?.eta_seconds
+      ? bgRemovalState.eta_seconds > 0
+        ? bgRemovalState.eta_seconds
+        : null
       : null
-    : null
 
   const handleCancel = useCallback(async () => {
+    if (isCompressing) {
+      // TODO: Add cancel_video_compression command
+      return
+    }
     try {
       await cancelVideoBgRemoval([video.id])
     } catch (e) {
       logError(`Failed to cancel: ${e}`)
     }
-  }, [video.id])
+  }, [video.id, isCompressing])
 
   const formatEta = (seconds: number) => {
     if (seconds < 60) return `${Math.round(seconds)}s`
@@ -77,9 +89,24 @@ const VideoGridItem = memo(function VideoGridItem({
     return `${mins}m ${secs}s`
   }
 
+  const formatDuration = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = Math.floor(seconds % 60)
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
+    }
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const getFormatBadge = (filepath: string) => {
+    const ext = filepath.split('.').pop()?.toUpperCase() || ''
+    return ext
+  }
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger>
+      <ContextMenuTrigger asChild>
         <div
           role="button"
           tabIndex={0}
@@ -113,16 +140,44 @@ const VideoGridItem = memo(function VideoGridItem({
               </div>
             )}
 
-            {video.bg_removed_filepath && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <div className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-purple-500 text-white">
-                    <Scissors className="h-3 w-3" />
-                  </div>
-                </TooltipTrigger>
-                <TooltipContent>Background Removed</TooltipContent>
-              </Tooltip>
-            )}
+            <div className="absolute top-2 right-2 left-2 flex items-start justify-between">
+              <div className="flex max-w-[calc(100%-24px)] flex-wrap gap-1">
+                {video.compressed_filepath && (
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500 text-white"
+                    title="Compressed"
+                  >
+                    <Minimize2 className="h-2.5 w-2.5" />
+                  </span>
+                )}
+              </div>
+
+              {(video.compressed_filepath || video.bg_removed_filepath) && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
+                      <Info className="h-3 w-3" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-50 p-3">
+                    <div className="space-y-2 text-xs">
+                      {video.compressed_size && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-green-600">Compressed:</span>
+                          <span className="font-medium">{formatBytes(video.compressed_size)}</span>
+                        </div>
+                      )}
+                      {video.bg_removed_size && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-purple-600">BG Removed:</span>
+                          <span className="font-medium">{formatBytes(video.bg_removed_size)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
 
             {isProcessing && bgRemovalState && (
               <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-black/60 p-2">
@@ -143,11 +198,32 @@ const VideoGridItem = memo(function VideoGridItem({
               </div>
             )}
 
+            {isCompressing && compressionState && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-black/60 p-2">
+                <Progress value={compressionState.progress} className="w-3/4" />
+                <span className="text-xs text-white">
+                  {compressionState.message || 'Compressing...'}
+                </span>
+              </div>
+            )}
+
             <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-2 py-1.5">
-              <p className="truncate text-xs font-semibold text-white">{video.filename}</p>
               <p className="text-[10px] text-white/80">
                 {video.size ? formatBytes(video.size) : 'Unknown'}
               </p>
+              <p className="truncate text-xs font-semibold text-white">{video.filename}</p>
+              <div className="flex items-center gap-2 text-[10px] text-white/80">
+                <span className="rounded bg-white/20 px-1 font-medium">
+                  {getFormatBadge(video.filepath)}
+                </span>
+                {video.width && video.height && (
+                  <span className="font-mono">
+                    {video.width}x{video.height}
+                  </span>
+                )}
+                {video.duration && <span>{formatDuration(video.duration)}</span>}
+                {video.fps && <span>{Math.round(video.fps)}f</span>}
+              </div>
             </div>
           </div>
         </div>
@@ -182,10 +258,31 @@ const VideoGridItem = memo(function VideoGridItem({
             </ContextMenuItem>
           </>
         )}
+        {video.compressed_filepath && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() =>
+                openFile(video.compressed_filepath!).catch((e) => logError(`Failed: ${e}`))
+              }
+            >
+              <ExternalLink className="mr-2 h-4 w-4" /> Open Compressed
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() =>
+                revealInExplorer(video.compressed_filepath!).catch((e) => logError(`Failed: ${e}`))
+              }
+            >
+              <FolderSearch className="mr-2 h-4 w-4" /> Reveal Compressed
+            </ContextMenuItem>
+          </>
+        )}
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => onBgRemovalClick?.([video.id])}>
-          <Scissors className="mr-2 h-4 w-4" /> Remove Background
-        </ContextMenuItem>
+        {onCompressClick && (
+          <ContextMenuItem onClick={() => onCompressClick?.([video.id])}>
+            <Minimize2 className="mr-2 h-4 w-4" /> Compress
+          </ContextMenuItem>
+        )}
         <ContextMenuSeparator />
         <ContextMenuItem className="text-destructive" onClick={() => onDelete(video.id)}>
           <Trash2 className="mr-2 h-4 w-4" /> Delete
@@ -200,7 +297,7 @@ export function VideoGrid({
   selectedIds,
   onSelectionChange,
   onDelete,
-  onBgRemovalClick,
+  onCompressClick,
 }: VideoGridProps) {
   const handleSelect = useCallback(
     (id: number, event: React.MouseEvent | React.KeyboardEvent) => {
@@ -257,7 +354,7 @@ export function VideoGrid({
           onSelect={handleSelect}
           onKeyDown={handleKeyDown}
           onDelete={onDelete}
-          onBgRemovalClick={onBgRemovalClick}
+          onCompressClick={onCompressClick}
         />
       ))}
     </div>

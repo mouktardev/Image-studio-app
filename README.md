@@ -29,9 +29,11 @@ Open-source desktop application for image optimization with AI-powered tools. Bu
 ## Features
 
 - **Image Compression** - Optimize images with adjustable quality settings and bounded concurrency
-- **Batch Processing** - Process multiple images simultaneously with progress tracking
+- **Video Compression** - Compress videos with quality presets (Ultra Fast to Very Slow) using FFmpeg
+- **Background Removal** - AI-powered background removal for images and videos
+- **Batch Processing** - Process multiple images/videos simultaneously with per-item progress tracking
 - **AI-Powered upscale** - Local AI processing for image upscale
-- **SQLite Database** - Persistent storage for image metadata and compression history
+- **SQLite Database** - Persistent storage for image/video metadata and processing history
 - **Auto-Updater** - Built-in update mechanism to keep the app current
 - **Modern UI** - Clean, responsive interface with dark/light theme support
 - **Privacy-First** - All processing happens locally - no data leaves your device
@@ -76,7 +78,7 @@ bun run tauri build
 
 ## Usage
 
-1. **Add Images** - Drag and drop images or use the file picker
+1. **Add Images/videos** - Drag and drop images or videos use the file picker
 2. **Configure Settings** - Adjust quality, format, and other options
 3. **Process** - Compress or convert your images
 4. **Export** - Save optimized images to your desired location
@@ -176,4 +178,4 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - [ ] Add advanced **Format Conversion** options.
 - [ ] Add image editor.
-- [ ] video edits using ffmpeg.
+- [ ] Add video editor with advanced effects.

@@ -4,6 +4,7 @@ import {
   getAllCompressedImages,
   getAllUpscaledImages,
   getAllBgRemovedImages,
+  getAllCompressedVideos,
   revealInExplorer,
   openFile,
   checkDbHealth,
@@ -21,7 +22,15 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Button } from '@/components/ui/button'
-import { FolderSearch, Archive, Maximize2, FileImage, Scissors, Minimize2 } from 'lucide-react'
+import {
+  FolderSearch,
+  Archive,
+  Maximize2,
+  FileImage,
+  Scissors,
+  Minimize2,
+  Video,
+} from 'lucide-react'
 import { SearchBar } from '@/components/search-bar'
 import { SortDropdown } from '@/components/sort-dropdown'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -29,25 +38,27 @@ import { RotateCcw } from 'lucide-react'
 
 export const Route = createFileRoute('/_app/output')({
   beforeLoad: async () => {
-    // Fetch filters before route renders to prevent flash of unfiltered content
     const filters = await getFilters('output')
     return { filters }
   },
   loader: async ({ context }) => {
     const { filters } = context
-    const [compressedImages, upscaledImages, bgRemovedImages] = await Promise.all([
-      getAllCompressedImages(),
-      getAllUpscaledImages(),
-      getAllBgRemovedImages(),
-    ])
-    return { compressedImages, upscaledImages, bgRemovedImages, filters }
+    const [compressedImages, upscaledImages, bgRemovedImages, compressedVideos] = await Promise.all(
+      [
+        getAllCompressedImages(),
+        getAllUpscaledImages(),
+        getAllBgRemovedImages(),
+        getAllCompressedVideos(),
+      ]
+    )
+    return { compressedImages, upscaledImages, bgRemovedImages, compressedVideos, filters }
   },
   gcTime: 0,
   staleTime: 0,
   component: OutputPage,
 })
 
-type OutputType = 'all' | 'compressed' | 'upscaled' | 'bg_removed'
+type OutputType = 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
 
 type UpscaledVersion = {
   scale: number
@@ -60,10 +71,11 @@ type OutputImage = {
   id: number
   filename: string
   filepath: string
-  resultType: 'compressed' | 'upscaled' | 'bg_removed'
+  resultType: 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
   displayFilepath: string
   displaySize: number | null
   upscaled_scale?: number
+  isVideo?: boolean
 }
 
 function parseUpscaledVersions(
@@ -84,6 +96,7 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
   const isCompressed = image.resultType === 'compressed'
   const isUpscaled = image.resultType === 'upscaled'
   const isBgRemoved = image.resultType === 'bg_removed'
+  const isVideoCompressed = image.resultType === 'video_compressed'
 
   const handleOpen = useCallback(async () => {
     try {
@@ -119,13 +132,23 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
             }}
           >
             {!imageError ? (
-              <img
-                src={convertFileSrc(image.displayFilepath)}
-                alt={image.filename}
-                className="size-full object-cover"
-                onError={() => setImageError(true)}
-                loading="lazy"
-              />
+              isVideoCompressed ? (
+                <video
+                  src={convertFileSrc(image.displayFilepath)}
+                  className="size-full object-cover"
+                  muted
+                  preload="metadata"
+                  onError={() => setImageError(true)}
+                />
+              ) : (
+                <img
+                  src={convertFileSrc(image.displayFilepath)}
+                  alt={image.filename}
+                  className="size-full object-cover"
+                  onError={() => setImageError(true)}
+                  loading="lazy"
+                />
+              )
             ) : (
               <div className="flex size-full items-center justify-center">
                 <FolderSearch className="text-muted-foreground h-8 w-8" />
@@ -133,6 +156,14 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
             )}
 
             <div className="absolute top-2 left-2 flex gap-1">
+              {isVideoCompressed && (
+                <span
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white"
+                  title="Video Compressed"
+                >
+                  <Minimize2 className="h-2.5 w-2.5" />
+                </span>
+              )}
               {isCompressed && (
                 <span
                   className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-white"
@@ -185,7 +216,14 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
       <ContextMenuContent>
         <ContextMenuItem onClick={handleOpen}>
           <FileImage className="mr-2 h-4 w-4" />
-          Open {isCompressed ? 'Compressed' : isBgRemoved ? 'Background Removed' : 'Upscaled'}
+          Open{' '}
+          {isVideoCompressed
+            ? 'Video'
+            : isCompressed
+              ? 'Compressed'
+              : isBgRemoved
+                ? 'Background Removed'
+                : 'Upscaled'}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleReveal}>
           <FolderSearch className="mr-2 h-4 w-4" />
@@ -335,13 +373,27 @@ function OutputPage() {
         displaySize: img.bg_removed_size ?? null,
       }))
 
+    const compressedVideosList: OutputImage[] = loaderData.compressedVideos
+      .filter((video) => video.compressed_filepath)
+      .map((video) => ({
+        id: video.id,
+        filename: video.filename,
+        filepath: video.compressed_filepath!,
+        resultType: 'video_compressed' as const,
+        displayFilepath: video.compressed_filepath!,
+        displaySize: video.compressed_size ?? null,
+        isVideo: true,
+      }))
+
     let allImages: OutputImage[]
     if (outputType === 'all') {
-      allImages = [...compressedList, ...upscaledList, ...bgRemovedList]
+      allImages = [...compressedList, ...upscaledList, ...bgRemovedList, ...compressedVideosList]
     } else if (outputType === 'compressed') {
       allImages = compressedList
     } else if (outputType === 'upscaled') {
       allImages = upscaledList
+    } else if (outputType === 'video_compressed') {
+      allImages = compressedVideosList
     } else {
       allImages = bgRemovedList
     }
@@ -385,7 +437,8 @@ function OutputPage() {
           All (
           {loaderData.compressedImages.length +
             loaderData.upscaledImages.length +
-            loaderData.bgRemovedImages.length}
+            loaderData.bgRemovedImages.length +
+            loaderData.compressedVideos.length}
           )
         </Button>
         <Button
@@ -405,6 +458,13 @@ function OutputPage() {
           onClick={() => handleOutputTypeChange('bg_removed')}
         >
           <Scissors className="size-4" />({loaderData.bgRemovedImages.length})
+        </Button>
+        <Button
+          variant={outputType === 'video_compressed' ? 'default' : 'secondary'}
+          onClick={() => handleOutputTypeChange('video_compressed')}
+        >
+          <Minimize2 className="size-4" />
+          <Video className="size-4" />({loaderData.compressedVideos.length})
         </Button>
         {/* Search and sort row */}
         <div className="ml-auto flex items-center gap-2">

@@ -55,9 +55,11 @@ pub struct Video {
     pub bg_removed_filepath: Option<String>,
     pub bg_removed_size: Option<i64>,
     pub bg_removed_model: Option<String>,
+    pub compressed_filepath: Option<String>,
+    pub compressed_size: Option<i64>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FfmpegStatus {
     pub available: bool,
     pub path: String,
@@ -72,12 +74,19 @@ fn find_ffmpeg() -> (PathBuf, String) {
         return (sidecar, "sidecar".to_string());
     }
 
-    if let Ok(output) = Command::new("where")
-        .arg("ffmpeg")
+    let mut cmd = Command::new("where");
+    cmd.arg("ffmpeg")
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    if let Ok(output) = cmd.output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             if let Some(first_line) = stdout.lines().next() {
@@ -99,12 +108,19 @@ fn find_ffprobe() -> (PathBuf, String) {
         return (sidecar, "sidecar".to_string());
     }
 
-    if let Ok(output) = Command::new("where")
-        .arg("ffprobe")
+    let mut cmd = Command::new("where");
+    cmd.arg("ffprobe")
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
     {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    if let Ok(output) = cmd.output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             if let Some(first_line) = stdout.lines().next() {
@@ -149,15 +165,25 @@ struct ProbeOutput {
     format: Option<ProbeFormat>,
 }
 
+const FFMPEG_CACHE_KEY: &str = "ffmpeg_status_cache";
+
 #[tauri::command]
-pub async fn check_ffmpeg_status() -> Result<FfmpegStatus, String> {
+pub async fn check_ffmpeg_status(state: State<'_, DbState>) -> Result<FfmpegStatus, String> {
+    let pool = state.0.clone();
+    
+    if let Ok(Some(cached)) = crate::db::get_setting(&pool, FFMPEG_CACHE_KEY).await {
+        if let Ok(status) = serde_json::from_str::<FfmpegStatus>(&cached) {
+            return Ok(status);
+        }
+    }
+
     let (ffmpeg_path, ffmpeg_source) = find_ffmpeg();
     let (ffprobe_path, ffprobe_source) = find_ffprobe();
 
     let ffmpeg_available = ffmpeg_path.exists() && ffmpeg_source != "none";
     let ffprobe_available = ffprobe_path.exists() && ffprobe_source != "none";
 
-    if ffmpeg_available {
+    let status = if ffmpeg_available {
         let size = fs::metadata(&ffmpeg_path).map(|m| m.len() as i64).ok();
         let path_str = ffmpeg_path.to_string_lossy().to_string();
         let source = if ffmpeg_available && ffprobe_available {
@@ -171,24 +197,30 @@ pub async fn check_ffmpeg_status() -> Result<FfmpegStatus, String> {
         } else {
             ffprobe_source
         };
-        Ok(FfmpegStatus {
+        FfmpegStatus {
             available: true,
             path: path_str,
             size,
             source,
-        })
+        }
     } else {
-        Ok(FfmpegStatus {
+        FfmpegStatus {
             available: false,
             path: String::new(),
             size: None,
             source: "none".to_string(),
-        })
+        }
+    };
+
+    if let Ok(cache_json) = serde_json::to_string(&status) {
+        let _ = crate::db::set_setting(&pool, FFMPEG_CACHE_KEY, &cache_json).await;
     }
+
+    Ok(status)
 }
 
 #[tauri::command]
-pub async fn download_ffmpeg(app: AppHandle) -> Result<String, String> {
+pub async fn download_ffmpeg(app: AppHandle, state: State<'_, DbState>) -> Result<String, String> {
     let _ = app.emit("ffmpeg-download-progress", VideoBgRemovalProgress {
         id: 0,
         progress: 0,
@@ -210,6 +242,9 @@ pub async fn download_ffmpeg(app: AppHandle) -> Result<String, String> {
         eta_seconds: None,
     });
 
+    let pool = state.0.clone();
+    let _ = crate::db::set_setting(&pool, FFMPEG_CACHE_KEY, "").await;
+
     let (path, _) = find_ffmpeg();
     Ok(path.to_string_lossy().to_string())
 }
@@ -220,8 +255,8 @@ fn probe_video(path: &PathBuf) -> Result<(Option<i64>, Option<i64>, Option<f64>,
         anyhow::bail!("ffprobe not found at {:?}", ffprobe);
     }
 
-    let output = Command::new(&ffprobe)
-        .args([
+    let mut cmd = Command::new(&ffprobe);
+    cmd.args([
             "-v", "quiet",
             "-print_format", "json",
             "-show_streams",
@@ -229,8 +264,16 @@ fn probe_video(path: &PathBuf) -> Result<(Option<i64>, Option<i64>, Option<f64>,
             &path.to_string_lossy(),
         ])
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .output()
+        .stderr(Stdio::null());
+    
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = cmd.output()
         .context("Failed to run ffprobe")?;
 
     let probe: ProbeOutput = serde_json::from_slice(&output.stdout)
@@ -351,6 +394,192 @@ pub async fn import_videos(
     Ok(VideoImportResult { imported: imported_count, duplicates, failed })
 }
 
+#[derive(Clone, Serialize)]
+pub struct VideoCompressionProgress {
+    pub id: i64,
+    pub progress: u8,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CompressionPreset {
+    pub name: String,
+    pub crf: u8,
+    pub preset: String,
+}
+
+#[tauri::command]
+pub fn get_compression_presets() -> Vec<CompressionPreset> {
+    vec![
+        CompressionPreset { name: "Ultra Fast".to_string(), crf: 23, preset: "ultrafast".to_string() },
+        CompressionPreset { name: "Fast".to_string(), crf: 21, preset: "fast".to_string() },
+        CompressionPreset { name: "Medium".to_string(), crf: 20, preset: "medium".to_string() },
+        CompressionPreset { name: "Slow".to_string(), crf: 19, preset: "slow".to_string() },
+        CompressionPreset { name: "Very Slow".to_string(), crf: 18, preset: "veryslow".to_string() },
+    ]
+}
+
+#[tauri::command]
+pub async fn compress_videos_by_ids(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    ids: Vec<i64>,
+    quality: u8,
+    preset: String,
+) -> Result<usize, String> {
+    let pool = state.0.clone();
+
+    let output_dir_setting: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'output'")
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+
+    let concurrency_limit = num_cpus::get().max(2);
+
+    let results: Vec<bool> = stream::iter(ids.into_iter())
+        .map(|id| {
+            let app_clone = app.clone();
+            let pool_clone = pool.clone();
+            let output_dir_clone = output_dir_setting.clone();
+            let preset_clone = preset.clone();
+            let quality_clone = quality;
+
+            async move {
+                let video_record: Option<(String,)> = sqlx::query_as("SELECT filepath FROM videos WHERE id = ?")
+                    .bind(id)
+                    .fetch_optional(&pool_clone)
+                    .await
+                    .ok()
+                    .flatten();
+
+                if let Some((filepath,)) = video_record {
+                    let _ = app_clone.emit("video-compression-progress", VideoCompressionProgress {
+                        id,
+                        progress: 10,
+                        message: "Starting...".to_string(),
+                    });
+
+                    let orig_path = PathBuf::from(&filepath);
+                    if !orig_path.exists() {
+                        return false;
+                    }
+
+                    let file_stem = orig_path.file_stem().unwrap_or_default().to_string_lossy();
+                    let new_filename = format!("{}_compressed.mp4", file_stem);
+                    
+                    let final_filepath = match &output_dir_clone {
+                        Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir).join(&new_filename),
+                        _ => orig_path.with_file_name(&new_filename),
+                    };
+
+                    let temp_filename = format!("{}.tmp", new_filename);
+                    let temp_filepath = match &output_dir_clone {
+                        Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir).join(&temp_filename),
+                        _ => orig_path.with_file_name(&temp_filename),
+                    };
+
+                    let _ = app_clone.emit("video-compression-progress", VideoCompressionProgress {
+                        id,
+                        progress: 20,
+                        message: "Compressing...".to_string(),
+                    });
+
+                    let temp_filepath_clone = temp_filepath.clone();
+                    let orig_path_clone = orig_path.clone();
+                    
+                    let compress_result = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+                        let ffmpeg_path = get_ffmpeg_path();
+                        if !ffmpeg_path.exists() {
+                            return Err("FFmpeg not found".to_string());
+                        }
+
+                        let mut cmd = Command::new(&ffmpeg_path);
+                        cmd.arg("-i").arg(&orig_path_clone)
+                           .arg("-c:v").arg("libx264")
+                           .arg("-crf").arg(quality_clone.to_string())
+                           .arg("-preset").arg(&preset_clone)
+                           .arg("-c:a").arg("aac")
+                           .arg("-b:a").arg("128k")
+                           .arg("-movflags").arg("+faststart")
+                           .arg("-f").arg("mp4")
+                           .arg("-y")
+                           .arg(&temp_filepath_clone);
+
+                        #[cfg(windows)]
+                        {
+                            use std::os::windows::process::CommandExt;
+                            const CREATE_NO_WINDOW: u32 = 0x08000000;
+                            cmd.creation_flags(CREATE_NO_WINDOW);
+                        }
+
+                        let output = cmd.output().map_err(|e| format!("Failed to run ffmpeg: {}", e))?;
+                        
+                        if !output.status.success() {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            return Err(format!("FFmpeg failed: {}", stderr));
+                        }
+
+                        Ok(())
+                    }).await;
+
+                    match compress_result {
+                        Ok(Ok(_)) => {
+                            if let Err(e) = fs::rename(&temp_filepath, &final_filepath) {
+                                log::error!("Failed to rename temp file: {}", e);
+                                let _ = fs::remove_file(&temp_filepath);
+                                return false;
+                            }
+
+                            let size = fs::metadata(&final_filepath).map(|m| m.len() as i64).ok();
+                            let fp = dunce::canonicalize(&final_filepath).unwrap_or(final_filepath).to_string_lossy().to_string();
+                            
+                            let insert_result = sqlx::query(
+                                "INSERT OR REPLACE INTO compressed_videos (original_id, filepath, size) VALUES (?, ?, ?)"
+                            )
+                            .bind(id)
+                            .bind(fp)
+                            .bind(size)
+                            .execute(&pool_clone)
+                            .await;
+
+                            if insert_result.is_ok() {
+                                let _ = app_clone.emit("video-compression-progress", VideoCompressionProgress {
+                                    id,
+                                    progress: 100,
+                                    message: "Done".to_string(),
+                                });
+                                let _ = app_clone.emit("videos-updated", ());
+                                return true;
+                            }
+                        },
+                        Ok(Err(e)) => {
+                            log::error!("Compression error for ID {}: {}", id, e);
+                            let _ = fs::remove_file(&temp_filepath);
+                        },
+                        Err(e) => {
+                            log::error!("Tokio spawn error for ID {}: {}", id, e);
+                            let _ = fs::remove_file(&temp_filepath);
+                        }
+                    }
+                    
+                    let _ = app_clone.emit("video-compression-progress", VideoCompressionProgress {
+                        id,
+                        progress: 0,
+                        message: "Failed".to_string(),
+                    });
+                }
+                false
+            }
+        })
+        .buffer_unordered(concurrency_limit)
+        .collect()
+        .await;
+
+    let compressed_count = results.into_iter().filter(|&success| success).count();
+
+    Ok(compressed_count)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct VideoQueryParams {
     pub search: Option<String>,
@@ -433,14 +662,31 @@ pub async fn get_all_videos(
         bg_map.insert(orig_id, (fp, sz, model));
     }
 
+    let comp_rows = sqlx::query_as::<_, (i64, String, Option<i64>)>(
+        "SELECT original_id, filepath, size FROM compressed_videos"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut comp_map: std::collections::HashMap<i64, (String, Option<i64>)> = std::collections::HashMap::new();
+    for (orig_id, fp, sz) in comp_rows {
+        comp_map.insert(orig_id, (fp, sz));
+    }
+
     let videos: Vec<Video> = rows.into_iter().map(|(id, filename, filepath, mimetype, size, width, height, duration, fps)| {
         let (bg_removed_filepath, bg_removed_size, bg_removed_model) = match bg_map.get(&id) {
             Some((fp, sz, model)) => (Some(fp.clone()), *sz, Some(model.clone())),
             None => (None, None, None),
         };
+        let (compressed_filepath, compressed_size) = match comp_map.get(&id) {
+            Some((fp, sz)) => (Some(fp.clone()), *sz),
+            None => (None, None),
+        };
         Video {
             id, filename, filepath, mimetype, size, width, height, duration, fps,
             bg_removed_filepath, bg_removed_size, bg_removed_model,
+            compressed_filepath, compressed_size,
         }
     }).collect();
 
@@ -508,6 +754,47 @@ pub async fn get_all_bg_removed_videos(state: State<'_, DbState>) -> Result<Vec<
             bg_removed_filepath: Some(row.2),
             bg_removed_size: row.4,
             bg_removed_model: Some(row.3),
+            compressed_filepath: None,
+            compressed_size: None,
+        }
+    }).collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_all_compressed_videos(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
+    let pool = state.0.clone();
+
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<i64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>)>(
+        r#"
+        SELECT v.id, v.filename, c.filepath, c.size,
+               v.width, v.height, v.duration, v.fps
+        FROM videos v
+        INNER JOIN compressed_videos c ON v.id = c.original_id
+        ORDER BY v.id DESC
+        "#
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let result: Vec<Video> = rows.into_iter().map(|row| {
+        Video {
+            id: row.0,
+            filename: row.1,
+            filepath: row.2.clone(),
+            mimetype: Some("video/mp4".to_string()),
+            size: row.3,
+            width: row.4,
+            height: row.5,
+            duration: row.6,
+            fps: row.7,
+            bg_removed_filepath: None,
+            bg_removed_size: None,
+            bg_removed_model: None,
+            compressed_filepath: Some(row.2),
+            compressed_size: row.3,
         }
     }).collect();
 

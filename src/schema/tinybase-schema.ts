@@ -22,6 +22,10 @@ export const tablesSchema = {
     message: { type: 'string' },
     eta_seconds: { type: 'number' },
   },
+  video_compressions: {
+    progress: { type: 'number' },
+    message: { type: 'string' },
+  },
   logs: {
     level: { type: 'number' },
     message: { type: 'string' },

@@ -77,24 +77,24 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   asChild
-                  isActive={isOutputActive}
-                  tooltip={isCollapsed ? 'Processed' : undefined}
-                >
-                  <Link to="/output">
-                    <Folder className="h-4 w-4" />
-                    <span>Processed</span>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  asChild
                   isActive={isVideosActive}
                   tooltip={isCollapsed ? 'Videos' : undefined}
                 >
                   <Link to="/videos">
                     <Video className="h-4 w-4" />
                     <span>Videos</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isOutputActive}
+                  tooltip={isCollapsed ? 'Processed' : undefined}
+                >
+                  <Link to="/output">
+                    <Folder className="h-4 w-4" />
+                    <span>Processed</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

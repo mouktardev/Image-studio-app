@@ -10,6 +10,9 @@ import {
   getFilters,
   updateFilters,
   resetFilters,
+  getCompressionPresets,
+  compressVideosByIds,
+  type CompressionPreset,
 } from '@/lib/tauri'
 import type { Video, VideoQueryParams } from '@/lib/tauri'
 import {
@@ -22,6 +25,7 @@ import {
 import { VideoGrid } from '@/components/video-grid'
 import { VideoTools } from '@/components/video-tools'
 import { VideoBgRemovalDialog } from '@/components/dialogs/video-bg-removal-dialog'
+import { CompressVideoDialog } from '@/components/dialogs/compress-video-dialog'
 import { error as logError } from '@/lib/logger'
 import { toast } from '@/lib/notifications'
 import {
@@ -38,7 +42,8 @@ import { Download, Loader2 } from 'lucide-react'
 export const Route = createFileRoute('/_app/videos')({
   beforeLoad: async () => {
     const filters = await getFilters('videos')
-    return { filters }
+    const presets = await getCompressionPresets()
+    return { filters, presets }
   },
   loader: async ({ context }) => {
     const { filters } = context
@@ -70,6 +75,17 @@ function VideosPage() {
     available: boolean
     size: number | null
   } | null>(null)
+
+  const [compressDialogOpen, setCompressDialogOpen] = useState(false)
+  const [compressionPresets, setCompressionPresets] = useState<CompressionPreset[]>([])
+
+  useEffect(() => {
+    getCompressionPresets()
+      .then(setCompressionPresets)
+      .catch((err) => {
+        logError(`Failed to load compression presets: ${err}`)
+      })
+  }, [])
 
   const hasActiveFilters = searchQuery !== '' || sortField !== 'date' || sortOrder !== 'desc'
 
@@ -262,43 +278,63 @@ function VideosPage() {
     }
   }, [selectedIds, reloadVideos])
 
-  const handleRemoveBackground = useCallback(
-    async (_ids: number[]) => {
-      // Video background removal is temporarily disabled
-      // TODO: Re-enable when GPU acceleration is properly configured
-      toast('Video background removal is coming soon!', 'info')
+  const handleRemoveBackground = useCallback(async () => {
+    // add ids: number[] as param.
+    // Video background removal is temporarily disabled
+    // TODO: Re-enable when GPU acceleration is properly configured
+    toast('Video background removal is coming soon!', 'info')
 
-      // Previous implementation kept for reference:
-      // try {
-      //   const result = await removeVideoBg(ids)
-      //   if (result.cancelled > 0) {
-      //     await addNotification({
-      //       message: `Video processing cancelled (${result.cancelled} cancelled${result.processed > 0 ? `, ${result.processed} completed` : ''})`,
-      //       status: 'info',
-      //     })
-      //   } else if (result.processed > 0) {
-      //     await addNotification({
-      //       message: `Removed background from ${result.processed} video${result.processed !== 1 ? 's' : ''}`,
-      //       status: 'success',
-      //     })
-      //   } else {
-      //     await addNotification({
-      //       message: 'No videos were processed',
-      //       status: 'error',
-      //     })
-      //   }
-      //   await reloadVideos()
-      // } catch (err) {
-      //   logError(`Failed to process videos: ${err}`)
-      //   toast('Failed to process videos', 'error')
-      // }
-    },
-    [reloadVideos]
-  )
+    // Previous implementation kept for reference:
+    // try {
+    //   const result = await removeVideoBg(ids)
+    //   if (result.cancelled > 0) {
+    //     await addNotification({
+    //       message: `Video processing cancelled (${result.cancelled} cancelled${result.processed > 0 ? `, ${result.processed} completed` : ''})`,
+    //       status: 'info',
+    //     })
+    //   } else if (result.processed > 0) {
+    //     await addNotification({
+    //       message: `Removed background from ${result.processed} video${result.processed !== 1 ? 's' : ''}`,
+    //       status: 'success',
+    //     })
+    //   } else {
+    //     await addNotification({
+    //       message: 'No videos were processed',
+    //       status: 'error',
+    //     })
+    //   }
+    //   await reloadVideos()
+    // } catch (err) {
+    //   logError(`Failed to process videos: ${err}`)
+    //   toast('Failed to process videos', 'error')
+    // }
+  }, [reloadVideos])
 
   const openBgRemovalDialog = useCallback(() => {
     if (selectedIds.length > 0) {
       setActiveDialog('bgremove')
+    }
+  }, [selectedIds])
+
+  const handleCompress = useCallback(
+    async (ids: number[], quality: number, preset: string) => {
+      try {
+        const result = await compressVideosByIds(ids, quality, preset)
+        if (result > 0) {
+          toast(`Compressed ${result} video${result > 1 ? 's' : ''}`, 'success')
+          await reloadVideos()
+        }
+      } catch (err) {
+        logError(`Failed to compress videos: ${err}`)
+        toast('Failed to compress videos', 'error')
+      }
+    },
+    [reloadVideos]
+  )
+
+  const openCompressDialog = useCallback(() => {
+    if (selectedIds.length > 0) {
+      setCompressDialogOpen(true)
     }
   }, [selectedIds])
 
@@ -320,6 +356,7 @@ function VideosPage() {
         onBgRemovalClick={openBgRemovalDialog}
         onDeleteClick={handleDeleteSelected}
         onImportClick={handleImport}
+        onCompressClick={openCompressDialog}
         isImporting={isImporting}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -337,9 +374,9 @@ function VideosPage() {
           selectedIds={selectedIds}
           onSelectionChange={handleSelectionChange}
           onDelete={handleDelete}
-          onBgRemovalClick={(ids) => {
+          onCompressClick={(ids) => {
             handleSelectionChange(ids)
-            setActiveDialog('bgremove')
+            setCompressDialogOpen(true)
           }}
         />
       </div>
@@ -392,6 +429,15 @@ function VideosPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CompressVideoDialog
+        videos={videos}
+        videoIds={selectedIds}
+        open={compressDialogOpen}
+        onOpenChange={setCompressDialogOpen}
+        onConfirm={handleCompress}
+        presets={compressionPresets}
+      />
     </>
   )
 }

@@ -19,8 +19,8 @@ use crud::background_removal::{
 };
 use crud::video_processing::{
     import_videos, get_all_videos, delete_videos_by_ids, remove_video_bg,
-    get_all_bg_removed_videos, check_ffmpeg_status, download_ffmpeg,
-    cancel_video_bg_removal, CancelTokens
+    get_all_bg_removed_videos, get_all_compressed_videos, check_ffmpeg_status, download_ffmpeg,
+    cancel_video_bg_removal, compress_videos_by_ids, get_compression_presets, CancelTokens
 };
 use crud::filters::{get_filters, update_filters, reset_filters};
 use sqlx::SqlitePool;
@@ -155,9 +155,12 @@ pub fn run() {
             delete_videos_by_ids,
             remove_video_bg,
             get_all_bg_removed_videos,
+            get_all_compressed_videos,
             check_ffmpeg_status,
             download_ffmpeg,
             cancel_video_bg_removal,
+            compress_videos_by_ids,
+            get_compression_presets,
             get_filters,
             update_filters,
             reset_filters

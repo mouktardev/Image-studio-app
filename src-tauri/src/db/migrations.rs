@@ -13,6 +13,7 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_bg_removed_images_table(pool).await?;
     create_videos_table(pool).await?;
     create_bg_removed_videos_table(pool).await?;
+    create_compressed_videos_table(pool).await?;
     create_filters_table(pool).await?;
     insert_default_settings(pool, app).await?;
     insert_default_swatches(pool).await?;
@@ -302,6 +303,24 @@ async fn create_bg_removed_videos_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create 'bg_removed_videos' table")?;
+
+    Ok(())
+}
+
+async fn create_compressed_videos_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS compressed_videos (
+            original_id INTEGER NOT NULL UNIQUE,
+            filepath TEXT NOT NULL,
+            size INTEGER,
+            FOREIGN KEY (original_id) REFERENCES videos(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'compressed_videos' table")?;
 
     Ok(())
 }
