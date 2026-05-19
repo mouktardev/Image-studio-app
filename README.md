@@ -87,7 +87,7 @@ bun run tauri build
 
 - Latest release: [![GitHub release](https://img.shields.io/github/v/release/mouktardev/Image-studio-app?style=flat-square)](https://github.com/mouktardev/Image-studio-app/releases/latest)
 
-## Release Process
+## Release Process for developers
 
 This project uses a streamlined release workflow:
 

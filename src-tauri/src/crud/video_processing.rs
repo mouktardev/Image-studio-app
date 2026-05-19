@@ -17,6 +17,8 @@ use ffmpeg_sidecar::paths;
 
 use super::background_removal::{apply_bg_removal, create_onnx_session, check_model_downloaded};
 
+const SUPPORTED_VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp"];
+
 pub struct CancelTokens(pub std::sync::Mutex<HashMap<i64, Arc<AtomicBool>>>);
 
 #[derive(Clone, Serialize)]
@@ -341,6 +343,22 @@ pub async fn import_videos(
     for path_str in paths {
         let path = PathBuf::from(&path_str);
         if !path.exists() {
+            failed += 1;
+            continue;
+        }
+
+        // Validate file extension first
+        let ext = path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase());
+
+        if let Some(extension) = ext.as_deref() {
+            if !SUPPORTED_VIDEO_EXTENSIONS.contains(&extension) {
+                failed += 1;
+                continue;
+            }
+        } else {
+            // No extension - skip
             failed += 1;
             continue;
         }

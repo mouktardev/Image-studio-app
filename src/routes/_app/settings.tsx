@@ -544,18 +544,13 @@ function SettingsPage() {
         <Card className="my-4">
           <CardHeader>
             <CardTitle>Video Processing</CardTitle>
-            <CardDescription>
-              Configure video processing tools for background removal
-            </CardDescription>
+            <CardDescription>Configure video processing tools for compression</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <Video className="text-muted-foreground h-5 w-5" />
-                <h3 className="font-semibold">Video Background Removal</h3>
-                <span className="text-muted-foreground text-xs">
-                  AI-powered video background removal (requires FFmpeg + AI model)
-                </span>
+                <h3 className="font-semibold">FFmpeg</h3>
               </div>
 
               <div className="space-y-3">

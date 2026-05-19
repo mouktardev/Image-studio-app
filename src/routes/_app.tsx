@@ -6,7 +6,6 @@ import { LogPanel } from '@/components/log-panel'
 import { CompressionListener } from '@/components/compression-listener'
 import { UpscalingListener } from '@/components/upscaling-listener'
 import { BgRemovalListener } from '@/components/bg-removal-listener'
-import { VideoBgRemovalListener } from '@/components/video-bg-removal-listener'
 import { VideoCompressionListener } from '@/components/video-compression-listener'
 import { useValue } from '@/schema/tinybase-schema'
 import UpdateChecker from '@/components/update-checker'
@@ -24,7 +23,6 @@ function RouteComponent() {
       <CompressionListener />
       <UpscalingListener />
       <BgRemovalListener />
-      <VideoBgRemovalListener />
       <VideoCompressionListener />
       <AppSidebar />
       <SidebarInset className="flex flex-col">

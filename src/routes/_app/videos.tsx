@@ -24,7 +24,6 @@ import {
 } from '@/lib/notifications'
 import { VideoGrid } from '@/components/video-grid'
 import { VideoTools } from '@/components/video-tools'
-import { VideoBgRemovalDialog } from '@/components/dialogs/video-bg-removal-dialog'
 import { CompressVideoDialog } from '@/components/dialogs/compress-video-dialog'
 import { error as logError } from '@/lib/logger'
 import { toast } from '@/lib/notifications'
@@ -60,7 +59,6 @@ function VideosPage() {
 
   const [videos, setVideos] = useState<Video[]>(loaderData.videos)
   const [selectedIds, setSelectedIds] = useState<number[]>(loaderData.selectedIds)
-  const [activeDialog, setActiveDialog] = useState<null | 'bgremove'>(null)
 
   const [searchQuery, setSearchQuery] = useState(loaderData.filters.search_query)
   const [sortField, setSortField] = useState<'name' | 'size' | 'date'>(
@@ -278,44 +276,6 @@ function VideosPage() {
     }
   }, [selectedIds, reloadVideos])
 
-  const handleRemoveBackground = useCallback(async () => {
-    // add ids: number[] as param.
-    // Video background removal is temporarily disabled
-    // TODO: Re-enable when GPU acceleration is properly configured
-    toast('Video background removal is coming soon!', 'info')
-
-    // Previous implementation kept for reference:
-    // try {
-    //   const result = await removeVideoBg(ids)
-    //   if (result.cancelled > 0) {
-    //     await addNotification({
-    //       message: `Video processing cancelled (${result.cancelled} cancelled${result.processed > 0 ? `, ${result.processed} completed` : ''})`,
-    //       status: 'info',
-    //     })
-    //   } else if (result.processed > 0) {
-    //     await addNotification({
-    //       message: `Removed background from ${result.processed} video${result.processed !== 1 ? 's' : ''}`,
-    //       status: 'success',
-    //     })
-    //   } else {
-    //     await addNotification({
-    //       message: 'No videos were processed',
-    //       status: 'error',
-    //     })
-    //   }
-    //   await reloadVideos()
-    // } catch (err) {
-    //   logError(`Failed to process videos: ${err}`)
-    //   toast('Failed to process videos', 'error')
-    // }
-  }, [reloadVideos])
-
-  const openBgRemovalDialog = useCallback(() => {
-    if (selectedIds.length > 0) {
-      setActiveDialog('bgremove')
-    }
-  }, [selectedIds])
-
   const handleCompress = useCallback(
     async (ids: number[], quality: number, preset: string) => {
       try {
@@ -338,6 +298,53 @@ function VideosPage() {
     }
   }, [selectedIds])
 
+  const handleDrop = useCallback(
+    async (files: string[]) => {
+      if (files.length === 0) return
+
+      const status = await checkFfmpegStatus()
+      if (!status.available) {
+        setFfmpegNeeded(true)
+        setFfmpegStatus(status)
+        return
+      }
+
+      setIsImporting(true)
+      try {
+        const result = await importVideos(files)
+        const { imported, duplicates, failed } = result
+
+        if (imported > 0) {
+          toast(`Imported ${imported} video${imported > 1 ? 's' : ''}`, 'success')
+        }
+
+        if (duplicates > 0) {
+          toast(`${duplicates} video${duplicates > 1 ? 's' : ''} already exists, skipped`, 'info')
+        }
+
+        if (files.length > 1) {
+          const parts: string[] = []
+          if (imported > 0) parts.push(`${imported} imported`)
+          if (duplicates > 0) parts.push(`${duplicates} already exists`)
+          if (failed > 0) parts.push(`${failed} failed`)
+
+          await addNotification({
+            message: parts.join(', '),
+            status: failed > 0 ? 'error' : 'success',
+          })
+        }
+
+        await reloadVideos()
+      } catch (err) {
+        logError(`Failed to import dropped videos: ${err}`)
+        toast(String(err).replace(/^Error:\s*/, ''), 'error')
+      } finally {
+        setIsImporting(false)
+      }
+    },
+    [reloadVideos]
+  )
+
   return (
     <>
       {isImporting && (
@@ -353,7 +360,6 @@ function VideosPage() {
         videos={videos}
         selectedIds={selectedIds}
         onSelectionChange={handleSelectionChange}
-        onBgRemovalClick={openBgRemovalDialog}
         onDeleteClick={handleDeleteSelected}
         onImportClick={handleImport}
         onCompressClick={openCompressDialog}
@@ -378,16 +384,10 @@ function VideosPage() {
             handleSelectionChange(ids)
             setCompressDialogOpen(true)
           }}
+          onImport={handleImport}
+          onDrop={handleDrop}
         />
       </div>
-
-      <VideoBgRemovalDialog
-        videos={videos}
-        videoIds={selectedIds}
-        open={activeDialog === 'bgremove'}
-        onOpenChange={(open) => setActiveDialog(open ? 'bgremove' : null)}
-        onConfirm={handleRemoveBackground}
-      />
 
       <Dialog open={ffmpegNeeded} onOpenChange={setFfmpegNeeded}>
         <DialogContent>

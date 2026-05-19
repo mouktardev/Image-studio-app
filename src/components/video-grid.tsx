@@ -1,5 +1,6 @@
-import { useState, useCallback, memo } from 'react'
+import { useState, useCallback, memo, useEffect } from 'react'
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { type Video, revealInExplorer, openFile, cancelVideoBgRemoval } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import {
@@ -10,10 +11,11 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Progress } from '@/components/ui/progress'
-import { Play, Trash2, ExternalLink, FolderSearch, Minimize2, Info } from 'lucide-react'
+import { Play, Trash2, ExternalLink, FolderSearch, Minimize2, Info, Upload } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRow } from '@/schema/tinybase-schema'
+import { Button } from '@/components/ui/button'
 
 interface VideoGridProps {
   videos: Video[]
@@ -21,6 +23,8 @@ interface VideoGridProps {
   onSelectionChange: (ids: number[]) => void
   onDelete: (id: number) => void
   onCompressClick?: (ids: number[]) => void
+  onImport?: () => void
+  onDrop?: (files: string[]) => void
 }
 
 const VideoGridItem = memo(function VideoGridItem({
@@ -298,7 +302,37 @@ export function VideoGrid({
   onSelectionChange,
   onDelete,
   onCompressClick,
+  onImport,
+  onDrop,
 }: VideoGridProps) {
+  const [isDragging, setIsDragging] = useState(false)
+
+  useEffect(() => {
+    if (!onDrop) return
+
+    const unlistenDragEnter = listen<{ paths: string[] }>('tauri://drag-enter', () => {
+      setIsDragging(true)
+    })
+
+    const unlistenDragLeave = listen<{ paths: string[] }>('tauri://drag-leave', () => {
+      setIsDragging(false)
+    })
+
+    const unlistenDrop = listen<{ paths: string[] }>('tauri://drag-drop', (event) => {
+      setIsDragging(false)
+      const files = event.payload.paths
+      if (files && files.length > 0) {
+        onDrop(files)
+      }
+    })
+
+    return () => {
+      unlistenDragEnter.then((fn) => fn())
+      unlistenDragLeave.then((fn) => fn())
+      unlistenDrop.then((fn) => fn())
+    }
+  }, [onDrop])
+
   const handleSelect = useCallback(
     (id: number, event: React.MouseEvent | React.KeyboardEvent) => {
       if (event.shiftKey && selectedIds.length > 0) {
@@ -336,10 +370,32 @@ export function VideoGrid({
     [handleSelect]
   )
 
-  if (videos.length === 0) {
+  if (videos.length === 0 && !isDragging) {
     return (
-      <div className="flex flex-1 items-center justify-center p-8">
-        <p className="text-muted-foreground text-sm">No videos imported yet</p>
+      <div className="flex h-full flex-1 flex-col items-center justify-center gap-4">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <Upload className="text-muted-foreground h-10 w-10" />
+          <p className="text-sm font-medium">No videos found</p>
+          <p className="text-muted-foreground text-xs">
+            Import videos or drag and drop to get started
+          </p>
+        </div>
+        {onImport && (
+          <Button onClick={onImport} variant="outline" size="sm">
+            Import Videos
+          </Button>
+        )}
+      </div>
+    )
+  }
+
+  if (isDragging) {
+    return (
+      <div className="pointer-events-none flex h-full flex-1 flex-col items-center justify-center">
+        <div className="border-primary bg-background rounded-lg border-2 border-dashed p-8 text-center">
+          <Upload className="text-primary mx-auto h-10 w-10" />
+          <p className="mt-3 text-sm font-medium">Drop videos here</p>
+        </div>
       </div>
     )
   }

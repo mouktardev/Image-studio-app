@@ -430,42 +430,76 @@ function OutputPage() {
     <>
       <div className="bg-background flex flex-wrap items-center gap-2 border-b p-3">
         {/* Type filter buttons row */}
-        <Button
-          variant={outputType === 'all' ? 'default' : 'secondary'}
-          onClick={() => handleOutputTypeChange('all')}
-        >
-          All (
-          {loaderData.compressedImages.length +
-            loaderData.upscaledImages.length +
-            loaderData.bgRemovedImages.length +
-            loaderData.compressedVideos.length}
-          )
-        </Button>
-        <Button
-          variant={outputType === 'compressed' ? 'default' : 'secondary'}
-          onClick={() => handleOutputTypeChange('compressed')}
-        >
-          <Minimize2 className="size-4" />({loaderData.compressedImages.length})
-        </Button>
-        <Button
-          variant={outputType === 'upscaled' ? 'default' : 'secondary'}
-          onClick={() => handleOutputTypeChange('upscaled')}
-        >
-          <Maximize2 className="size-4" />({loaderData.upscaledImages.length})
-        </Button>
-        <Button
-          variant={outputType === 'bg_removed' ? 'default' : 'secondary'}
-          onClick={() => handleOutputTypeChange('bg_removed')}
-        >
-          <Scissors className="size-4" />({loaderData.bgRemovedImages.length})
-        </Button>
-        <Button
-          variant={outputType === 'video_compressed' ? 'default' : 'secondary'}
-          onClick={() => handleOutputTypeChange('video_compressed')}
-        >
-          <Minimize2 className="size-4" />
-          <Video className="size-4" />({loaderData.compressedVideos.length})
-        </Button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={outputType === 'all' ? 'default' : 'secondary'}
+              onClick={() => handleOutputTypeChange('all')}
+              size="icon"
+            >
+              <Archive className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            All ({loaderData.compressedImages.length + loaderData.upscaledImages.length + loaderData.bgRemovedImages.length + loaderData.compressedVideos.length})
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={outputType === 'compressed' ? 'default' : 'secondary'}
+              onClick={() => handleOutputTypeChange('compressed')}
+              size="icon"
+            >
+              <Minimize2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Compressed ({loaderData.compressedImages.length})
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={outputType === 'upscaled' ? 'default' : 'secondary'}
+              onClick={() => handleOutputTypeChange('upscaled')}
+              size="icon"
+            >
+              <Maximize2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Upscaled ({loaderData.upscaledImages.length})
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={outputType === 'bg_removed' ? 'default' : 'secondary'}
+              onClick={() => handleOutputTypeChange('bg_removed')}
+              size="icon"
+            >
+              <Scissors className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Background Removed ({loaderData.bgRemovedImages.length})
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={outputType === 'video_compressed' ? 'default' : 'secondary'}
+              onClick={() => handleOutputTypeChange('video_compressed')}
+              size="icon"
+            >
+              <Video className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            Video Compressed ({loaderData.compressedVideos.length})
+          </TooltipContent>
+        </Tooltip>
         {/* Search and sort row */}
         <div className="ml-auto flex items-center gap-2">
           <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Enter file name" />

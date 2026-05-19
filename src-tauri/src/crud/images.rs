@@ -6,6 +6,8 @@ use tauri::State;
 
 use crate::DbState;
 
+const SUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif", "avif"];
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Image {
     pub id: i64,
@@ -244,6 +246,22 @@ pub async fn import_images_bulk(
     for filepath in &filepaths {
         let path = PathBuf::from(filepath);
 
+        // Validate file extension first
+        let ext = path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase());
+
+        if let Some(extension) = ext.as_deref() {
+            if !SUPPORTED_IMAGE_EXTENSIONS.contains(&extension) {
+                failed += 1;
+                continue;
+            }
+        } else {
+            // No extension - skip
+            failed += 1;
+            continue;
+        }
+
         let canonical_path = match canonicalize(&path) {
             Ok(p) => p,
             Err(_) => { failed += 1; continue; }
@@ -255,12 +273,7 @@ pub async fn import_images_bulk(
             .unwrap_or("unknown")
             .to_string();
 
-        let mimetype = match canonical_path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|e| e.to_lowercase())
-            .as_deref()
-        {
+        let mimetype = match ext.as_deref() {
             Some("png") => "image/png",
             Some("jpg") | Some("jpeg") => "image/jpeg",
             Some("gif") => "image/gif",
@@ -346,162 +359,6 @@ pub async fn delete_image(id: i64, state: State<'_, DbState>) -> Result<(), Stri
         .map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-#[tauri::command]
-pub async fn check_db_health(state: State<'_, DbState>) -> Result<i64, String> {
-    let mut orphan_count = 0;
-
-    // 1. Check original images - count orphaned records
-    let originals: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (_id, filepath) in originals {
-        if !std::path::Path::new(&filepath).exists() {
-            orphan_count += 1;
-        }
-    }
-
-    // 2. Check compressed images
-    let compressions: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM compressed_images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (_id, filepath) in compressions {
-        if !std::path::Path::new(&filepath).exists() {
-            orphan_count += 1;
-        }
-    }
-
-    // 3. Check upscaled images
-    let upscaled: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM upscaled_images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (_id, filepath) in upscaled {
-        if !std::path::Path::new(&filepath).exists() {
-            orphan_count += 1;
-        }
-    }
-
-    // 4. Check background removed images
-    let bg_removed: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM bg_removed_images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (_id, filepath) in bg_removed {
-        if !std::path::Path::new(&filepath).exists() {
-            orphan_count += 1;
-        }
-    }
-
-    Ok(orphan_count)
-}
-
-#[tauri::command]
-pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
-    let mut deleted_count = 0;
-
-    // 1. Check original images
-    let originals: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (id, filepath) in originals {
-        if !std::path::Path::new(&filepath).exists() {
-            // Delete associated compressed images first
-            sqlx::query("DELETE FROM compressed_images WHERE original_id = ?")
-                .bind(id)
-                .execute(&state.0)
-                .await
-                .map_err(|e| e.to_string())?;
-            
-            // Delete associated upscaled images
-            sqlx::query("DELETE FROM upscaled_images WHERE original_id = ?")
-                .bind(id)
-                .execute(&state.0)
-                .await
-                .map_err(|e| e.to_string())?;
-
-            // Delete associated background removed images
-            sqlx::query("DELETE FROM bg_removed_images WHERE original_id = ?")
-                .bind(id)
-                .execute(&state.0)
-                .await
-                .map_err(|e| e.to_string())?;
-                
-            // Delete original
-            sqlx::query("DELETE FROM images WHERE id = ?")
-                .bind(id)
-                .execute(&state.0)
-                .await
-                .map_err(|e| e.to_string())?;
-                
-            deleted_count += 1;
-        }
-    }
-
-    // 2. Check remaining compressed images (where original exists, but compressed file was deleted)
-    let compressions: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM compressed_images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (id, filepath) in compressions {
-        if !std::path::Path::new(&filepath).exists() {
-            sqlx::query("DELETE FROM compressed_images WHERE id = ?")
-                .bind(id)
-                .execute(&state.0)
-                .await
-                .map_err(|e| e.to_string())?;
-                
-            deleted_count += 1;
-        }
-    }
-
-    // 3. Check remaining upscaled images
-    let upscaled: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM upscaled_images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (id, filepath) in upscaled {
-        if !std::path::Path::new(&filepath).exists() {
-            sqlx::query("DELETE FROM upscaled_images WHERE id = ?")
-                .bind(id)
-                .execute(&state.0)
-                .await
-                .map_err(|e| e.to_string())?;
-                
-            deleted_count += 1;
-        }
-    }
-
-    // 4. Check background removed images
-    let bg_removed: Vec<(i64, String)> = sqlx::query_as("SELECT id, filepath FROM bg_removed_images")
-        .fetch_all(&state.0)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    for (id, filepath) in bg_removed {
-        if !std::path::Path::new(&filepath).exists() {
-            sqlx::query("DELETE FROM bg_removed_images WHERE id = ?")
-                .bind(id)
-                .execute(&state.0)
-                .await
-                .map_err(|e| e.to_string())?;
-                
-            deleted_count += 1;
-        }
-    }
-
-    Ok(deleted_count)
 }
 
 #[tauri::command]

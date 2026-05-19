@@ -188,7 +188,7 @@ export function ImageTools({
       {/* Search and Sort Controls */}
       {onSearchChange && onSortFieldChange && onSortOrderChange && (
         <div className="flex items-center gap-2">
-          <SearchBar value={searchQuery} onChange={onSearchChange} placeholder="Enter file name" />
+          <SearchBar value={searchQuery} onChange={onSearchChange} placeholder="Search images..." />
           <SortDropdown
             sortField={sortField}
             sortOrder={sortOrder}

@@ -7,3 +7,4 @@ pub mod upscaling;
 pub mod background_removal;
 pub mod video_processing;
 pub mod filters;
+pub mod db_maintenance;

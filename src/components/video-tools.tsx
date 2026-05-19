@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Trash2, Scissors, Upload, Loader2, Minimize2 } from 'lucide-react'
+import { Trash2, Upload, Loader2, Minimize2 } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import type { Video } from '@/lib/tauri'
 import { SearchBar } from '@/components/search-bar'
@@ -21,7 +21,6 @@ interface VideoToolsProps {
   videos: Video[]
   selectedIds: number[]
   onSelectionChange: (ids: number[]) => void
-  onBgRemovalClick: () => void
   onDeleteClick: () => void
   onImportClick: () => void
   onCompressClick?: () => void
@@ -40,7 +39,6 @@ export function VideoTools({
   videos,
   selectedIds,
   onSelectionChange,
-  onBgRemovalClick,
   onDeleteClick,
   onImportClick,
   onCompressClick,
@@ -99,15 +97,6 @@ export function VideoTools({
 
       {selectedIds.length > 0 && (
         <>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button onClick={onBgRemovalClick}>
-                <Scissors className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Remove Background ({selectedIds.length})</TooltipContent>
-          </Tooltip>
-
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)}>
