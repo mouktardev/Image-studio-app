@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Trash2, Upload, Loader2, Minimize2 } from 'lucide-react'
+import { Trash2, Upload, Loader2, Minimize2, Repeat2 } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import type { Video } from '@/lib/tauri'
 import { SearchBar } from '@/components/search-bar'
@@ -24,6 +24,7 @@ interface VideoToolsProps {
   onDeleteClick: () => void
   onImportClick: () => void
   onCompressClick?: () => void
+  onConvertClick?: () => void
   isImporting?: boolean
   searchQuery?: string
   onSearchChange?: (value: string) => void
@@ -42,6 +43,7 @@ export function VideoTools({
   onDeleteClick,
   onImportClick,
   onCompressClick,
+  onConvertClick,
   isImporting = false,
   searchQuery = '',
   onSearchChange,
@@ -73,7 +75,13 @@ export function VideoTools({
     <div className="bg-background flex flex-wrap items-center gap-2 border-b p-3">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button onClick={onImportClick} disabled={isImporting} variant="secondary">
+          <Button
+            onClick={onImportClick}
+            disabled={isImporting}
+            variant="secondary"
+            size="icon"
+            className="h-8 w-8"
+          >
             {isImporting ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
@@ -87,7 +95,7 @@ export function VideoTools({
       {selectedIds.length > 0 && onCompressClick && (
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button onClick={onCompressClick}>
+            <Button onClick={onCompressClick} size="icon" className="h-8 w-8">
               <Minimize2 className="size-4" />
             </Button>
           </TooltipTrigger>
@@ -95,11 +103,27 @@ export function VideoTools({
         </Tooltip>
       )}
 
+      {selectedIds.length > 0 && onConvertClick && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button onClick={onConvertClick} size="icon" className="h-8 w-8">
+              <Repeat2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Convert Format ({selectedIds.length})</TooltipContent>
+        </Tooltip>
+      )}
+
       {selectedIds.length > 0 && (
         <>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)}>
+              <Button
+                variant="destructive"
+                onClick={() => setOpenDeleteDialog(true)}
+                size="icon"
+                className="h-8 w-8"
+              >
                 <Trash2 className="size-4" />
               </Button>
             </TooltipTrigger>

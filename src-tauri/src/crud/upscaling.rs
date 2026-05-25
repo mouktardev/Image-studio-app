@@ -492,6 +492,9 @@ pub async fn get_all_upscaled_images(
             upscaled_versions: upscaled_json,
             bg_removed_filepath: None,
             bg_removed_size: None,
+            converted_filepath: None,
+            converted_size: None,
+            converted_format: None,
         }
     }).collect();
 

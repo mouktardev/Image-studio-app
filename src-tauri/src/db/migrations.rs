@@ -16,6 +16,8 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     alter_videos_add_thumbnail(pool).await?;
     create_bg_removed_videos_table(pool).await?;
     create_compressed_videos_table(pool).await?;
+    create_converted_images_table(pool).await?;
+    create_converted_videos_table(pool).await?;
     create_filters_table(pool).await?;
     insert_default_settings(pool, app).await?;
     insert_default_swatches(pool).await?;
@@ -340,6 +342,46 @@ async fn create_compressed_videos_table(pool: &SqlitePool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create 'compressed_videos' table")?;
+
+    Ok(())
+}
+
+async fn create_converted_images_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS converted_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            original_id INTEGER NOT NULL UNIQUE,
+            filepath TEXT NOT NULL,
+            format TEXT NOT NULL,
+            size INTEGER,
+            FOREIGN KEY (original_id) REFERENCES images(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'converted_images' table")?;
+
+    Ok(())
+}
+
+async fn create_converted_videos_table(pool: &SqlitePool) -> Result<()> {
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS converted_videos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+            original_id INTEGER NOT NULL UNIQUE,
+            filepath TEXT NOT NULL,
+            format TEXT NOT NULL,
+            size INTEGER,
+            FOREIGN KEY (original_id) REFERENCES videos(id) ON DELETE CASCADE
+        )
+        "#,
+    )
+    .execute(pool)
+    .await
+    .context("Failed to create 'converted_videos' table")?;
 
     Ok(())
 }

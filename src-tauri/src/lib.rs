@@ -4,12 +4,12 @@ mod crud;
 use db::{get_db_url, init_db, get_setting as db_get_setting, set_setting as db_set_setting};
 use tauri_plugin_log::{Target, TargetKind};
 
-use crud::images::{get_all_images, get_all_compressed_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, get_image_metadata};
+use crud::images::{get_all_images, get_all_compressed_images, get_all_converted_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, get_image_metadata};
 use crud::db_maintenance::{sync_database, check_db_health};
 use crud::notifications::{get_all_notifications, add_notification, mark_notification_read, delete_notification, mark_all_notifications_read, clear_all_notifications};
 use crud::selections::{get_selections, set_selections, add_selection, remove_selection, clear_selections};
 use crud::video_selections::{get_video_selections, set_video_selections, add_video_selection, remove_video_selection, clear_video_selections};
-use crud::compression::compress_images_by_ids;
+use crud::compression::{compress_images_by_ids, convert_images_by_ids};
 use crud::upscaling::{
     upscale_images_by_ids, get_all_upscaled_images, get_model_status, 
     download_model, get_upscale_settings, set_upscale_settings
@@ -20,8 +20,10 @@ use crud::background_removal::{
 };
 use crud::video_processing::{
     import_videos, get_all_videos, delete_videos_by_ids, remove_video_bg,
-    get_all_bg_removed_videos, get_all_compressed_videos, check_ffmpeg_status, download_ffmpeg,
-    cancel_video_bg_removal, compress_videos_by_ids, get_compression_presets,
+    get_all_bg_removed_videos, get_all_compressed_videos, get_all_converted_videos,
+    check_ffmpeg_status, download_ffmpeg,
+    cancel_video_bg_removal, compress_videos_by_ids, convert_videos_by_ids,
+    get_compression_presets,
     generate_video_thumbnails, CancelTokens
 };
 use crud::filters::{get_filters, update_filters, reset_filters};
@@ -142,6 +144,8 @@ pub fn run() {
             remove_video_selection,
             clear_video_selections,
             compress_images_by_ids,
+            convert_images_by_ids,
+            get_all_converted_images,
             upscale_images_by_ids,
             get_all_upscaled_images,
             get_model_status,
@@ -162,6 +166,8 @@ pub fn run() {
             download_ffmpeg,
             cancel_video_bg_removal,
             compress_videos_by_ids,
+            convert_videos_by_ids,
+            get_all_converted_videos,
             get_compression_presets,
             generate_video_thumbnails,
             get_filters,

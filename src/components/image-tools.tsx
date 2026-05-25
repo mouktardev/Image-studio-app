@@ -10,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { Trash2, Upload, Loader2, Maximize2, Scissors, RotateCcw, Minimize2 } from 'lucide-react'
+import { Trash2, Upload, Loader2, Maximize2, Scissors, RotateCcw, Minimize2, Repeat2 } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import type { Image } from '@/lib/tauri'
 import { SearchBar } from '@/components/search-bar'
@@ -26,6 +26,7 @@ interface ImageToolsProps {
   onCompressClick: () => void
   onUpscaleClick: () => void
   onBgRemovalClick: () => void
+  onConvertClick: () => void
   isImporting?: boolean
   // Filter props
   searchQuery?: string
@@ -47,6 +48,7 @@ export function ImageTools({
   onCompressClick,
   onUpscaleClick,
   onBgRemovalClick,
+  onConvertClick,
   isImporting = false,
   // Filter props
   searchQuery = '',
@@ -79,7 +81,7 @@ export function ImageTools({
     <div className="bg-background flex flex-wrap items-center gap-2 border-b p-3">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button onClick={onImport} disabled={isImporting} variant="secondary">
+          <Button onClick={onImport} disabled={isImporting} variant="secondary" size="icon" className="h-8 w-8">
             {isImporting ? (
               <Loader2 className="size-4 animate-spin" />
             ) : (
@@ -93,7 +95,7 @@ export function ImageTools({
         <>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={onCompressClick} size="icon">
+              <Button onClick={onCompressClick} size="icon" className="h-8 w-8">
                 <Minimize2 className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -102,7 +104,7 @@ export function ImageTools({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={onUpscaleClick} size="icon">
+              <Button onClick={onUpscaleClick} size="icon" className="h-8 w-8">
                 <Maximize2 className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -111,7 +113,7 @@ export function ImageTools({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={onBgRemovalClick} size="icon">
+              <Button onClick={onBgRemovalClick} size="icon" className="h-8 w-8">
                 <Scissors className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -120,7 +122,16 @@ export function ImageTools({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)} size="icon">
+              <Button onClick={onConvertClick} size="icon" className="h-8 w-8">
+                <Repeat2 className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Convert Format</TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)} size="icon" className="h-8 w-8">
                 <Trash2 className="size-4" />
               </Button>
             </TooltipTrigger>

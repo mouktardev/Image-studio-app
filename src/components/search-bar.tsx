@@ -39,7 +39,7 @@ export function SearchBar({
   }, [onChange])
 
   return (
-    <div className="relative w-50">
+    <div className="relative w-36">
       <Search className="text-muted-foreground absolute top-1/2 left-2 h-4 w-4 -translate-y-1/2" />
       <Input
         type="text"

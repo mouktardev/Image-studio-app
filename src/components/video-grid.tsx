@@ -11,7 +11,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Progress } from '@/components/ui/progress'
-import { Play, Trash2, ExternalLink, FolderSearch, Minimize2, Info, Upload } from 'lucide-react'
+import { Play, Trash2, ExternalLink, FolderSearch, Minimize2, Info, Upload, Repeat2 } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRow } from '@/schema/tinybase-schema'
@@ -23,6 +23,7 @@ interface VideoGridProps {
   onSelectionChange: (ids: number[]) => void
   onDelete: (id: number) => void
   onCompressClick?: (ids: number[]) => void
+  onConvertClick?: (ids: number[]) => void
   onImport?: () => void
   onDrop?: (files: string[]) => void
 }
@@ -34,6 +35,7 @@ const VideoGridItem = memo(function VideoGridItem({
   onKeyDown,
   onDelete,
   onCompressClick,
+  onConvertClick,
 }: {
   video: Video
   isSelected: boolean
@@ -41,9 +43,11 @@ const VideoGridItem = memo(function VideoGridItem({
   onKeyDown: (id: number, event: React.KeyboardEvent) => void
   onDelete: (id: number) => void
   onCompressClick?: (ids: number[]) => void
+  onConvertClick?: (ids: number[]) => void
 }) {
   const bgRemovalState = useRow('video_bg_removals', video.id.toString())
   const compressionState = useRow('video_compressions', video.id.toString())
+  const conversionState = useRow('video_conversions', video.id.toString())
 
   const thumbnailSrc = video.thumbnail_path ? convertFileSrc(video.thumbnail_path) : ''
 
@@ -64,6 +68,11 @@ const VideoGridItem = memo(function VideoGridItem({
     compressionState?.progress != null &&
     compressionState.progress > 0 &&
     compressionState.progress < 100
+
+  const isConverting =
+    conversionState?.progress != null &&
+    conversionState.progress > 0 &&
+    conversionState.progress < 100
 
   const etaSeconds = isCompressing
     ? null
@@ -147,9 +156,17 @@ const VideoGridItem = memo(function VideoGridItem({
                     <Minimize2 className="h-2.5 w-2.5" />
                   </span>
                 )}
+                {video.converted_filepath && (
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white"
+                    title="Converted"
+                  >
+                    <Repeat2 className="h-2.5 w-2.5" />
+                  </span>
+                )}
               </div>
 
-              {(video.compressed_filepath || video.bg_removed_filepath) && (
+              {(video.compressed_filepath || video.bg_removed_filepath || video.converted_filepath) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
@@ -168,6 +185,12 @@ const VideoGridItem = memo(function VideoGridItem({
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-purple-600">BG Removed:</span>
                           <span className="font-medium">{formatBytes(video.bg_removed_size)}</span>
+                        </div>
+                      )}
+                      {video.converted_size && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-orange-600">Converted:</span>
+                          <span className="font-medium">{formatBytes(video.converted_size)} ({video.converted_format?.toUpperCase()})</span>
                         </div>
                       )}
                     </div>
@@ -200,6 +223,15 @@ const VideoGridItem = memo(function VideoGridItem({
                 <Progress value={compressionState.progress} className="w-3/4" />
                 <span className="text-xs text-white">
                   {compressionState.message || 'Compressing...'}
+                </span>
+              </div>
+            )}
+
+            {isConverting && conversionState && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1 bg-black/60 p-2">
+                <Progress value={conversionState.progress} className="w-3/4" />
+                <span className="text-xs text-white">
+                  {conversionState.message || 'Converting...'}
                 </span>
               </div>
             )}
@@ -274,10 +306,34 @@ const VideoGridItem = memo(function VideoGridItem({
             </ContextMenuItem>
           </>
         )}
+        {video.converted_filepath && (
+          <>
+            <ContextMenuSeparator />
+            <ContextMenuItem
+              onClick={() =>
+                openFile(video.converted_filepath!).catch((e) => logError(`Failed: ${e}`))
+              }
+            >
+              <ExternalLink className="mr-2 h-4 w-4" /> Open Converted ({video.converted_format?.toUpperCase()})
+            </ContextMenuItem>
+            <ContextMenuItem
+              onClick={() =>
+                revealInExplorer(video.converted_filepath!).catch((e) => logError(`Failed: ${e}`))
+              }
+            >
+              <FolderSearch className="mr-2 h-4 w-4" /> Reveal Converted
+            </ContextMenuItem>
+          </>
+        )}
         <ContextMenuSeparator />
         {onCompressClick && (
           <ContextMenuItem onClick={() => onCompressClick?.([video.id])}>
             <Minimize2 className="mr-2 h-4 w-4" /> Compress
+          </ContextMenuItem>
+        )}
+        {onConvertClick && (
+          <ContextMenuItem onClick={() => onConvertClick([video.id])}>
+            <Repeat2 className="mr-2 h-4 w-4" /> Convert Format
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
@@ -295,6 +351,7 @@ export function VideoGrid({
   onSelectionChange,
   onDelete,
   onCompressClick,
+  onConvertClick,
   onImport,
   onDrop,
 }: VideoGridProps) {
@@ -404,6 +461,7 @@ export function VideoGrid({
           onKeyDown={handleKeyDown}
           onDelete={onDelete}
           onCompressClick={onCompressClick}
+          onConvertClick={onConvertClick}
         />
       ))}
     </div>

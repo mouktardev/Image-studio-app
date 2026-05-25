@@ -430,6 +430,9 @@ pub async fn get_all_bg_removed_images(
             upscaled_versions: "[]".to_string(),
             bg_removed_filepath: Some(row.2),
             bg_removed_size: Some(row.4),
+            converted_filepath: None,
+            converted_size: None,
+            converted_format: None,
         }
     }).collect();
 

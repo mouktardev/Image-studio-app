@@ -5,6 +5,8 @@ import {
   getAllUpscaledImages,
   getAllBgRemovedImages,
   getAllCompressedVideos,
+  getAllConvertedImages,
+  getAllConvertedVideos,
   revealInExplorer,
   openFile,
   checkDbHealth,
@@ -30,6 +32,7 @@ import {
   Scissors,
   Minimize2,
   Video,
+  Repeat2,
 } from 'lucide-react'
 import { SearchBar } from '@/components/search-bar'
 import { SortDropdown } from '@/components/sort-dropdown'
@@ -43,22 +46,44 @@ export const Route = createFileRoute('/_app/output')({
   },
   loader: async ({ context }) => {
     const { filters } = context
-    const [compressedImages, upscaledImages, bgRemovedImages, compressedVideos] = await Promise.all(
-      [
-        getAllCompressedImages(),
-        getAllUpscaledImages(),
-        getAllBgRemovedImages(),
-        getAllCompressedVideos(),
-      ]
-    )
-    return { compressedImages, upscaledImages, bgRemovedImages, compressedVideos, filters }
+    const [
+      compressedImages,
+      upscaledImages,
+      bgRemovedImages,
+      compressedVideos,
+      convertedImages,
+      convertedVideos,
+    ] = await Promise.all([
+      getAllCompressedImages(),
+      getAllUpscaledImages(),
+      getAllBgRemovedImages(),
+      getAllCompressedVideos(),
+      getAllConvertedImages(),
+      getAllConvertedVideos(),
+    ])
+    return {
+      compressedImages,
+      upscaledImages,
+      bgRemovedImages,
+      compressedVideos,
+      convertedImages,
+      convertedVideos,
+      filters,
+    }
   },
   gcTime: 0,
   staleTime: 0,
   component: OutputPage,
 })
 
-type OutputType = 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
+type OutputType =
+  | 'all'
+  | 'compressed'
+  | 'upscaled'
+  | 'bg_removed'
+  | 'video_compressed'
+  | 'converted_images'
+  | 'converted_videos'
 
 type UpscaledVersion = {
   scale: number
@@ -71,7 +96,13 @@ type OutputImage = {
   id: number
   filename: string
   filepath: string
-  resultType: 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
+  resultType:
+    | 'compressed'
+    | 'upscaled'
+    | 'bg_removed'
+    | 'video_compressed'
+    | 'converted_images'
+    | 'converted_videos'
   displayFilepath: string
   displaySize: number | null
   upscaled_scale?: number
@@ -98,6 +129,9 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
   const isUpscaled = image.resultType === 'upscaled'
   const isBgRemoved = image.resultType === 'bg_removed'
   const isVideoCompressed = image.resultType === 'video_compressed'
+  const isConvertedImages = image.resultType === 'converted_images'
+  const isConvertedVideos = image.resultType === 'converted_videos'
+  const isConverted = isConvertedImages || isConvertedVideos
 
   const handleOpen = useCallback(async () => {
     try {
@@ -133,7 +167,7 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
             }}
           >
             {!imageError ? (
-              isVideoCompressed && image.thumbnailPath ? (
+              (isVideoCompressed || isConvertedVideos) && image.thumbnailPath ? (
                 <img
                   src={convertFileSrc(image.thumbnailPath)}
                   alt={image.filename}
@@ -189,6 +223,14 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
                   <Scissors className="h-2.5 w-2.5" />
                 </span>
               )}
+              {isConverted && (
+                <span
+                  className="flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-white"
+                  title="Converted"
+                >
+                  <Repeat2 className="h-2.5 w-2.5" />
+                </span>
+              )}
             </div>
 
             <div className="absolute bottom-0 left-0 w-full bg-linear-to-t from-black/70 to-transparent px-2 py-1.5">
@@ -200,7 +242,9 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
                       ? 'text-blue-300'
                       : isBgRemoved
                         ? 'text-purple-300'
-                        : 'text-green-300'
+                        : isConverted
+                          ? 'text-orange-300'
+                          : 'text-green-300'
                   }
                 >
                   {image.displaySize ? formatBytes(image.displaySize) : 'Unknown'}
@@ -224,7 +268,9 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
               ? 'Compressed'
               : isBgRemoved
                 ? 'Background Removed'
-                : 'Upscaled'}
+                : isConverted
+                  ? 'Converted'
+                  : 'Upscaled'}
         </ContextMenuItem>
         <ContextMenuItem onClick={handleReveal}>
           <FolderSearch className="mr-2 h-4 w-4" />
@@ -387,15 +433,50 @@ function OutputPage() {
         thumbnailPath: video.thumbnail_path,
       }))
 
+    const convertedImagesList: OutputImage[] = loaderData.convertedImages
+      .filter((img) => img.converted_filepath)
+      .map((img) => ({
+        id: img.id,
+        filename: img.filename,
+        filepath: img.converted_filepath!,
+        resultType: 'converted_images' as const,
+        displayFilepath: img.converted_filepath!,
+        displaySize: img.converted_size ?? null,
+      }))
+
+    const convertedVideosList: OutputImage[] = loaderData.convertedVideos
+      .filter((video) => video.converted_filepath)
+      .map((video) => ({
+        id: video.id,
+        filename: video.filename,
+        filepath: video.converted_filepath!,
+        resultType: 'converted_videos' as const,
+        displayFilepath: video.converted_filepath!,
+        displaySize: video.converted_size ?? null,
+        isVideo: true,
+        thumbnailPath: video.thumbnail_path,
+      }))
+
     let allImages: OutputImage[]
     if (outputType === 'all') {
-      allImages = [...compressedList, ...upscaledList, ...bgRemovedList, ...compressedVideosList]
+      allImages = [
+        ...compressedList,
+        ...upscaledList,
+        ...bgRemovedList,
+        ...compressedVideosList,
+        ...convertedImagesList,
+        ...convertedVideosList,
+      ]
     } else if (outputType === 'compressed') {
       allImages = compressedList
     } else if (outputType === 'upscaled') {
       allImages = upscaledList
     } else if (outputType === 'video_compressed') {
       allImages = compressedVideosList
+    } else if (outputType === 'converted_images') {
+      allImages = convertedImagesList
+    } else if (outputType === 'converted_videos') {
+      allImages = convertedVideosList
     } else {
       allImages = bgRemovedList
     }
@@ -447,7 +528,9 @@ function OutputPage() {
             {loaderData.compressedImages.length +
               loaderData.upscaledImages.length +
               loaderData.bgRemovedImages.length +
-              loaderData.compressedVideos.length}
+              loaderData.compressedVideos.length +
+              loaderData.convertedImages.length +
+              loaderData.convertedVideos.length}
             )
           </TooltipContent>
         </Tooltip>
@@ -499,13 +582,33 @@ function OutputPage() {
           </TooltipTrigger>
           <TooltipContent>Video Compressed ({loaderData.compressedVideos.length})</TooltipContent>
         </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={outputType === 'converted_images' ? 'default' : 'secondary'}
+              onClick={() => handleOutputTypeChange('converted_images')}
+              size="icon"
+            >
+              <Repeat2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Converted Images ({loaderData.convertedImages.length})</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant={outputType === 'converted_videos' ? 'default' : 'secondary'}
+              onClick={() => handleOutputTypeChange('converted_videos')}
+              size="icon"
+            >
+              <Repeat2 className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Converted Videos ({loaderData.convertedVideos.length})</TooltipContent>
+        </Tooltip>
         {/* Search and sort row */}
         <div className="ml-auto flex items-center gap-2">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Search images or videos..."
-          />
+          <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Search files..." />
           <SortDropdown
             sortField={sortField}
             sortOrder={sortOrder}

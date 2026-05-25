@@ -26,6 +26,14 @@ export const tablesSchema = {
     progress: { type: 'number' },
     message: { type: 'string' },
   },
+  image_conversions: {
+    progress: { type: 'number' },
+    message: { type: 'string' },
+  },
+  video_conversions: {
+    progress: { type: 'number' },
+    message: { type: 'string' },
+  },
   logs: {
     level: { type: 'number' },
     message: { type: 'string' },

@@ -10,11 +10,13 @@ import {
   compressImagesByIds,
   upscaleImagesByIds,
   removeBackgroundByIds,
+  convertImagesByIds,
   checkDbHealth,
   getFilters,
   updateFilters,
   resetFilters,
   type Image,
+  type ImageFormat,
 } from '@/lib/tauri'
 import {
   addNotification,
@@ -27,7 +29,7 @@ import {
 import { error as logError } from '@/lib/logger'
 import { ImageTools } from '@/components/image-tools'
 import { useSetValueCallback } from '@/schema/tinybase-schema'
-import { CompressDialog, UpscaleDialog, BgRemovalDialog } from '@/components/dialogs'
+import { CompressDialog, UpscaleDialog, BgRemovalDialog, ConvertFormatDialog } from '@/components/dialogs'
 
 export const Route = createFileRoute('/_app/')({
   beforeLoad: async () => {
@@ -87,7 +89,7 @@ function IndexPage() {
   const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
 
   // Dialog state
-  const [activeDialog, setActiveDialog] = useState<null | 'compress' | 'upscale' | 'bgremove'>(null)
+  const [activeDialog, setActiveDialog] = useState<null | 'compress' | 'upscale' | 'bgremove' | 'convert'>(null)
   const [dialogImageIds, setDialogImageIds] = useState<number[]>([])
 
   // Sync search query changes to SQLite and reload images
@@ -307,6 +309,21 @@ function IndexPage() {
   }, [])
 
   // Dialog open handlers
+  const handleConvertSelected = useCallback(async (ids: number[], format: string) => {
+    try {
+      const count = ids.length
+      await convertImagesByIds(ids, format as ImageFormat)
+      const updated = await getAllImages()
+      setImages(updated)
+      await addNotification({
+        message: `Converted ${count} image${count > 1 ? 's' : ''} to ${format.toUpperCase()}`,
+        status: 'success',
+      })
+    } catch (err) {
+      logError(`Failed to convert images: ${err}`)
+    }
+  }, [])
+
   const openCompressDialog = useCallback((ids: number[]) => {
     setDialogImageIds(ids)
     setActiveDialog('compress')
@@ -320,6 +337,11 @@ function IndexPage() {
   const openBgRemovalDialog = useCallback((ids: number[]) => {
     setDialogImageIds(ids)
     setActiveDialog('bgremove')
+  }, [])
+
+  const openConvertDialog = useCallback((ids: number[]) => {
+    setDialogImageIds(ids)
+    setActiveDialog('convert')
   }, [])
 
   const closeDialog = useCallback(() => {
@@ -346,6 +368,7 @@ function IndexPage() {
         onCompressClick={() => openCompressDialog(selectedIds)}
         onUpscaleClick={() => openUpscaleDialog(selectedIds)}
         onBgRemovalClick={() => openBgRemovalDialog(selectedIds)}
+        onConvertClick={() => openConvertDialog(selectedIds)}
         isImporting={isImporting}
         // Filter props
         searchQuery={searchQuery}
@@ -367,6 +390,7 @@ function IndexPage() {
         onCompressClick={openCompressDialog}
         onUpscaleClick={openUpscaleDialog}
         onBgRemovalClick={openBgRemovalDialog}
+        onConvertClick={openConvertDialog}
       />
 
       {/* Dialogs */}
@@ -390,6 +414,14 @@ function IndexPage() {
         open={activeDialog === 'bgremove'}
         onOpenChange={(open) => !open && closeDialog()}
         onConfirm={handleRemoveBackgroundSelected}
+      />
+      <ConvertFormatDialog
+        items={images.map((img) => ({ id: img.id, filename: img.filename, size: img.size }))}
+        ids={dialogImageIds}
+        open={activeDialog === 'convert'}
+        onOpenChange={(open) => !open && closeDialog()}
+        onConfirm={handleConvertSelected}
+        isVideo={false}
       />
     </>
   )

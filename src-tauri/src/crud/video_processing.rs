@@ -60,6 +60,9 @@ pub struct Video {
     pub bg_removed_model: Option<String>,
     pub compressed_filepath: Option<String>,
     pub compressed_size: Option<i64>,
+    pub converted_filepath: Option<String>,
+    pub converted_size: Option<i64>,
+    pub converted_format: Option<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -489,6 +492,13 @@ pub struct VideoCompressionProgress {
     pub message: String,
 }
 
+#[derive(Clone, Serialize)]
+pub struct VideoConversionProgress {
+    pub id: i64,
+    pub progress: u8,
+    pub message: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompressionPreset {
     pub name: String,
@@ -668,6 +678,197 @@ pub async fn compress_videos_by_ids(
     Ok(compressed_count)
 }
 
+fn build_video_ffmpeg_args(format: &str, input: &str, output: &str) -> Vec<String> {
+    let container = match format {
+        "webm" => "webm",
+        "mov" => "mov",
+        "gif" => "gif",
+        _ => "mp4",
+    };
+
+    let mut args = vec![
+        "-i".into(), input.into(),
+    ];
+
+    match format {
+        "webm" => {
+            args.push("-c:v".into()); args.push("libvpx".into());
+            args.push("-c:a".into()); args.push("libvorbis".into());
+        },
+        "mov" => {
+            args.push("-c:v".into()); args.push("libx264".into());
+            args.push("-c:a".into()); args.push("aac".into());
+        },
+        "gif" => {
+            args.push("-vf".into()); args.push("fps=10,scale=320:-1:flags=lanczos".into());
+        },
+        _ => {  // mp4 default
+            args.push("-c:v".into()); args.push("libx264".into());
+            args.push("-c:a".into()); args.push("aac".into());
+            args.push("-movflags".into()); args.push("+faststart".into());
+        },
+    }
+
+    args.push("-f".into());
+    args.push(container.into());
+    args.push("-y".into());
+    args.push(output.into());
+    args
+}
+
+#[tauri::command]
+pub async fn convert_videos_by_ids(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    ids: Vec<i64>,
+    format: String,
+) -> Result<usize, String> {
+    let pool = state.0.clone();
+    let target_format = format.to_lowercase();
+
+    let output_dir_setting: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'output'")
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+
+    let concurrency_limit = num_cpus::get().max(2);
+
+    let results: Vec<bool> = stream::iter(ids.into_iter())
+        .map(|id| {
+            let app_clone = app.clone();
+            let pool_clone = pool.clone();
+            let output_dir_clone = output_dir_setting.clone();
+            let fmt = target_format.clone();
+
+            async move {
+                let video_record: Option<(String,)> = sqlx::query_as("SELECT filepath FROM videos WHERE id = ?")
+                    .bind(id)
+                    .fetch_optional(&pool_clone)
+                    .await
+                    .ok()
+                    .flatten();
+
+                if let Some((filepath,)) = video_record {
+                    let _ = app_clone.emit("video-conversion-progress", VideoConversionProgress {
+                        id,
+                        progress: 10,
+                        message: "Starting...".to_string(),
+                    });
+
+                    let orig_path = PathBuf::from(&filepath);
+                    if !orig_path.exists() {
+                        return false;
+                    }
+
+                    let file_stem = orig_path.file_stem().unwrap_or_default().to_string_lossy();
+                    let new_filename = format!("{}_{}.{}", file_stem, &fmt, &fmt);
+
+                    let final_filepath = match &output_dir_clone {
+                        Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir).join(&new_filename),
+                        _ => orig_path.with_file_name(&new_filename),
+                    };
+
+                    let temp_filename = format!("{}.tmp", new_filename);
+                    let temp_filepath = match &output_dir_clone {
+                        Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir).join(&temp_filename),
+                        _ => orig_path.with_file_name(&temp_filename),
+                    };
+
+                    let _ = app_clone.emit("video-conversion-progress", VideoConversionProgress {
+                        id,
+                        progress: 30,
+                        message: format!("Converting to {}...", fmt),
+                    });
+
+                    let temp_filepath_clone = temp_filepath.clone();
+                    let orig_path_str = orig_path.to_string_lossy().to_string();
+                    let fmt_clone = fmt.clone();
+
+                    let convert_result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+                        let ffmpeg_path = get_ffmpeg_path();
+                        if !ffmpeg_path.exists() {
+                            anyhow::bail!("FFmpeg not found");
+                        }
+
+                        let mut cmd = Command::new(&ffmpeg_path);
+                        let args = build_video_ffmpeg_args(&fmt_clone, &orig_path_str, &temp_filepath_clone.to_string_lossy());
+                        cmd.args(&args);
+
+                        #[cfg(windows)]
+                        {
+                            use std::os::windows::process::CommandExt;
+                            const CREATE_NO_WINDOW: u32 = 0x08000000;
+                            cmd.creation_flags(CREATE_NO_WINDOW);
+                        }
+
+                        let output = cmd.output().context("Failed to run ffmpeg for video conversion")?;
+
+                        if !output.status.success() {
+                            let stderr = String::from_utf8_lossy(&output.stderr);
+                            anyhow::bail!("FFmpeg conversion failed: {}", stderr);
+                        }
+
+                        Ok(())
+                    }).await;
+
+                    match convert_result {
+                        Ok(Ok(_)) => {
+                            if let Err(e) = fs::rename(&temp_filepath, &final_filepath) {
+                                log::error!("Failed to rename temp file: {}", e);
+                                let _ = fs::remove_file(&temp_filepath);
+                                return false;
+                            }
+
+                            let size = fs::metadata(&final_filepath).map(|m| m.len() as i64).ok();
+                            let fp = dunce::canonicalize(&final_filepath).unwrap_or(final_filepath).to_string_lossy().to_string();
+
+                            let insert_result = sqlx::query(
+                                "INSERT OR REPLACE INTO converted_videos (original_id, filepath, format, size) VALUES (?, ?, ?, ?)"
+                            )
+                            .bind(id)
+                            .bind(fp)
+                            .bind(&fmt)
+                            .bind(size)
+                            .execute(&pool_clone)
+                            .await;
+
+                            if insert_result.is_ok() {
+                                let _ = app_clone.emit("video-conversion-progress", VideoConversionProgress {
+                                    id,
+                                    progress: 100,
+                                    message: "Done".to_string(),
+                                });
+                                let _ = app_clone.emit("videos-updated", ());
+                                return true;
+                            }
+                        },
+                        Ok(Err(e)) => {
+                            log::error!("Video conversion error for ID {}: {}", id, e);
+                            let _ = fs::remove_file(&temp_filepath);
+                        },
+                        Err(e) => {
+                            log::error!("Tokio spawn error for ID {}: {}", id, e);
+                            let _ = fs::remove_file(&temp_filepath);
+                        }
+                    }
+
+                    let _ = app_clone.emit("video-conversion-progress", VideoConversionProgress {
+                        id,
+                        progress: 0,
+                        message: "Failed".to_string(),
+                    });
+                }
+                false
+            }
+        })
+        .buffer_unordered(concurrency_limit)
+        .collect()
+        .await;
+
+    let converted_count = results.into_iter().filter(|&success| success).count();
+    Ok(converted_count)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct VideoQueryParams {
     pub search: Option<String>,
@@ -763,6 +964,18 @@ pub async fn get_all_videos(
         comp_map.insert(orig_id, (fp, sz));
     }
 
+    let conv_rows = sqlx::query_as::<_, (i64, String, Option<i64>, String)>(
+        "SELECT original_id, filepath, size, format FROM converted_videos"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut conv_map: std::collections::HashMap<i64, (String, Option<i64>, String)> = std::collections::HashMap::new();
+    for (orig_id, fp, sz, fmt) in conv_rows {
+        conv_map.insert(orig_id, (fp, sz, fmt));
+    }
+
     let videos: Vec<Video> = rows.into_iter().map(|(id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path)| {
         let (bg_removed_filepath, bg_removed_size, bg_removed_model) = match bg_map.get(&id) {
             Some((fp, sz, model)) => (Some(fp.clone()), *sz, Some(model.clone())),
@@ -772,10 +985,15 @@ pub async fn get_all_videos(
             Some((fp, sz)) => (Some(fp.clone()), *sz),
             None => (None, None),
         };
+        let (converted_filepath, converted_size, converted_format) = match conv_map.get(&id) {
+            Some((fp, sz, fmt)) => (Some(fp.clone()), *sz, Some(fmt.clone())),
+            None => (None, None, None),
+        };
         Video {
             id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path,
             bg_removed_filepath, bg_removed_size, bg_removed_model,
             compressed_filepath, compressed_size,
+            converted_filepath, converted_size, converted_format,
         }
     }).collect();
 
@@ -898,6 +1116,9 @@ pub async fn get_all_bg_removed_videos(state: State<'_, DbState>) -> Result<Vec<
             bg_removed_model: Some(row.3),
             compressed_filepath: None,
             compressed_size: None,
+            converted_filepath: None,
+            converted_size: None,
+            converted_format: None,
         }
     }).collect();
 
@@ -938,6 +1159,53 @@ pub async fn get_all_compressed_videos(state: State<'_, DbState>) -> Result<Vec<
             bg_removed_model: None,
             compressed_filepath: Some(row.2),
             compressed_size: row.3,
+            converted_filepath: None,
+            converted_size: None,
+            converted_format: None,
+        }
+    }).collect();
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_all_converted_videos(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
+    let pool = state.0.clone();
+
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<i64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>, Option<String>, Option<String>, Option<i64>, Option<String>)>(
+        r#"
+        SELECT v.id, v.filename, cvi.filepath, cvi.size,
+               v.width, v.height, v.duration, v.fps, v.thumbnail_path,
+               cvi.filepath, cvi.size, cvi.format
+        FROM videos v
+        INNER JOIN converted_videos cvi ON v.id = cvi.original_id
+        ORDER BY cvi.id DESC
+        "#
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let result: Vec<Video> = rows.into_iter().map(|row| {
+        Video {
+            id: row.0,
+            filename: row.1,
+            filepath: row.2.clone(),
+            mimetype: Some("video/mp4".to_string()),
+            size: row.3,
+            width: row.4,
+            height: row.5,
+            duration: row.6,
+            fps: row.7,
+            thumbnail_path: row.8,
+            bg_removed_filepath: None,
+            bg_removed_size: None,
+            bg_removed_model: None,
+            compressed_filepath: None,
+            compressed_size: None,
+            converted_filepath: row.9,
+            converted_size: row.10,
+            converted_format: row.11,
         }
     }).collect();
 

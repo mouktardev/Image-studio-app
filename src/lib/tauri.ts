@@ -22,6 +22,9 @@ export interface Image {
   upscaled_versions?: UpscaledVersion[] // JSON parsed from backend
   bg_removed_filepath?: string | null
   bg_removed_size?: number | null
+  converted_filepath?: string | null
+  converted_size?: number | null
+  converted_format?: string | null
 }
 
 export interface AddImageData {
@@ -219,6 +222,9 @@ export interface Video {
   bg_removed_model?: string | null
   compressed_filepath?: string | null
   compressed_size?: number | null
+  converted_filepath?: string | null
+  converted_size?: number | null
+  converted_format?: string | null
 }
 
 export interface FfmpegStatus {
@@ -320,13 +326,33 @@ export async function compressVideosByIds(
   return invoke<number>('compress_videos_by_ids', { ids, quality, preset })
 }
 
+// Convert Format API
+export type ImageFormat = 'jpg' | 'png' | 'webp'
+export type VideoFormat = 'mp4' | 'webm' | 'mov' | 'gif'
+
+export async function convertImagesByIds(ids: number[], format: ImageFormat): Promise<number> {
+  return invoke<number>('convert_images_by_ids', { ids, format })
+}
+
+export async function convertVideosByIds(ids: number[], format: VideoFormat): Promise<number> {
+  return invoke<number>('convert_videos_by_ids', { ids, format })
+}
+
+export async function getAllConvertedImages(): Promise<Image[]> {
+  return invoke<Image[]>('get_all_converted_images')
+}
+
+export async function getAllConvertedVideos(): Promise<Video[]> {
+  return invoke<Video[]>('get_all_converted_videos')
+}
+
 // Filters API
 export interface FilterState {
   page: string
   search_query: string
   sort_field: 'name' | 'size' | 'date'
   sort_order: 'asc' | 'desc'
-  output_type: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
+  output_type: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed' | 'converted_images' | 'converted_videos'
 }
 
 export interface UpdateFilterRequest {
@@ -334,7 +360,7 @@ export interface UpdateFilterRequest {
   search_query?: string
   sort_field?: 'name' | 'size' | 'date'
   sort_order?: 'asc' | 'desc'
-  output_type?: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed'
+  output_type?: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed' | 'converted_images' | 'converted_videos'
 }
 
 export interface ImageQueryParams {

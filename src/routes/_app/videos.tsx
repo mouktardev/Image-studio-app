@@ -13,7 +13,9 @@ import {
   getCompressionPresets,
   compressVideosByIds,
   generateVideoThumbnails,
+  convertVideosByIds,
   type CompressionPreset,
+  type VideoFormat,
 } from '@/lib/tauri'
 import type { Video, VideoQueryParams } from '@/lib/tauri'
 import {
@@ -26,6 +28,7 @@ import {
 import { VideoGrid } from '@/components/video-grid'
 import { VideoTools } from '@/components/video-tools'
 import { CompressVideoDialog } from '@/components/dialogs/compress-video-dialog'
+import { ConvertFormatDialog } from '@/components/dialogs'
 import { error as logError, info as logInfo } from '@/lib/logger'
 import { toast } from '@/lib/notifications'
 import {
@@ -76,6 +79,7 @@ function VideosPage() {
   } | null>(null)
 
   const [compressDialogOpen, setCompressDialogOpen] = useState(false)
+  const [convertDialogOpen, setConvertDialogOpen] = useState(false)
   const [compressionPresets, setCompressionPresets] = useState<CompressionPreset[]>([])
 
   useEffect(() => {
@@ -303,9 +307,30 @@ function VideosPage() {
     [reloadVideos]
   )
 
+  const handleConvertSelected = useCallback(
+    async (ids: number[], format: string) => {
+      try {
+        const count = ids.length
+        await convertVideosByIds(ids, format as VideoFormat)
+        await reloadVideos()
+        toast(`Converted ${count} video${count > 1 ? 's' : ''} to ${format.toUpperCase()}`, 'success')
+      } catch (err) {
+        logError(`Failed to convert videos: ${err}`)
+        toast('Failed to convert videos', 'error')
+      }
+    },
+    [reloadVideos]
+  )
+
   const openCompressDialog = useCallback(() => {
     if (selectedIds.length > 0) {
       setCompressDialogOpen(true)
+    }
+  }, [selectedIds])
+
+  const openConvertDialog = useCallback(() => {
+    if (selectedIds.length > 0) {
+      setConvertDialogOpen(true)
     }
   }, [selectedIds])
 
@@ -374,6 +399,7 @@ function VideosPage() {
         onDeleteClick={handleDeleteSelected}
         onImportClick={handleImport}
         onCompressClick={openCompressDialog}
+        onConvertClick={openConvertDialog}
         isImporting={isImporting}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -394,6 +420,10 @@ function VideosPage() {
           onCompressClick={(ids) => {
             handleSelectionChange(ids)
             setCompressDialogOpen(true)
+          }}
+          onConvertClick={(ids) => {
+            handleSelectionChange(ids)
+            setConvertDialogOpen(true)
           }}
           onImport={handleImport}
           onDrop={handleDrop}
@@ -448,6 +478,14 @@ function VideosPage() {
         onOpenChange={setCompressDialogOpen}
         onConfirm={handleCompress}
         presets={compressionPresets}
+      />
+      <ConvertFormatDialog
+        items={videos.map((v) => ({ id: v.id, filename: v.filename, size: v.size }))}
+        ids={selectedIds}
+        open={convertDialogOpen}
+        onOpenChange={setConvertDialogOpen}
+        onConfirm={handleConvertSelected}
+        isVideo={true}
       />
     </>
   )

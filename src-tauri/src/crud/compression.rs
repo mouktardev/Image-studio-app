@@ -13,6 +13,13 @@ pub struct CompressionProgress {
     pub message: String,
 }
 
+#[derive(Clone, Serialize)]
+pub struct ImageConversionProgress {
+    pub id: i64,
+    pub progress: u8,
+    pub message: String,
+}
+
 #[tauri::command]
 pub async fn compress_images_by_ids(
     app: AppHandle,
@@ -211,5 +218,165 @@ pub async fn compress_images_by_ids(
     let compressed_count = results.into_iter().filter(|&success| success).count();
 
     Ok(compressed_count)
+}
+
+#[tauri::command]
+pub async fn convert_images_by_ids(
+    app: AppHandle,
+    state: State<'_, DbState>,
+    ids: Vec<i64>,
+    format: String,
+) -> Result<usize, String> {
+    let pool = state.0.clone();
+
+    let output_dir_setting: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'output'")
+        .fetch_optional(&pool)
+        .await
+        .unwrap_or(None);
+
+    let concurrency_limit = num_cpus::get().max(2);
+
+    let results: Vec<bool> = stream::iter(ids.into_iter())
+        .map(|id| {
+            let app_clone = app.clone();
+            let pool_clone = pool.clone();
+            let output_dir_clone = output_dir_setting.clone();
+            let target_format = format.clone();
+
+            async move {
+                let image_record: Option<(String,)> = sqlx::query_as("SELECT filepath FROM images WHERE id = ?")
+                    .bind(id)
+                    .fetch_optional(&pool_clone)
+                    .await
+                    .ok()
+                    .flatten();
+
+                if let Some((filepath,)) = image_record {
+                    let _ = app_clone.emit("image-conversion-progress", ImageConversionProgress {
+                        id,
+                        progress: 10,
+                        message: "Reading...".to_string(),
+                    });
+
+                    let orig_path = PathBuf::from(&filepath);
+                    if !orig_path.exists() {
+                        return false;
+                    }
+
+                    let file_stem = orig_path.file_stem().unwrap_or_default().to_string_lossy();
+                    let new_filename = format!("{}_{}.{}", file_stem, &target_format, &target_format);
+
+                    let final_filepath = match &output_dir_clone {
+                        Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir).join(&new_filename),
+                        _ => orig_path.with_file_name(&new_filename),
+                    };
+
+                    let temp_filename = format!("{}.tmp", new_filename);
+                    let temp_filepath = match &output_dir_clone {
+                        Some(dir) if PathBuf::from(dir).exists() => PathBuf::from(dir).join(&temp_filename),
+                        _ => orig_path.with_file_name(&temp_filename),
+                    };
+
+                    let _ = app_clone.emit("image-conversion-progress", ImageConversionProgress {
+                        id,
+                        progress: 30,
+                        message: format!("Converting to {}...", target_format),
+                    });
+
+                    let temp_filepath_clone = temp_filepath.clone();
+                    let orig_path_clone = orig_path.clone();
+                    let app_inner = app_clone.clone();
+                    let id_inner = id;
+                    let fmt = target_format.clone();
+
+                    let convert_result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
+                        let img = image::open(&orig_path_clone).context("Failed to open image")?;
+
+                        let _ = app_inner.emit("image-conversion-progress", ImageConversionProgress {
+                            id: id_inner,
+                            progress: 60,
+                            message: format!("Encoding as {}...", fmt),
+                        });
+
+                        let output_format = match fmt.as_str() {
+                            "jpg" | "jpeg" => image::ImageFormat::Jpeg,
+                            "png" => image::ImageFormat::Png,
+                            "webp" => image::ImageFormat::WebP,
+                            _ => image::ImageFormat::Png,
+                        };
+
+                        if fmt == "jpg" || fmt == "jpeg" {
+                            img.to_rgb8().save_with_format(&temp_filepath_clone, output_format)
+                                .context("Failed to save converted image")?;
+                        } else {
+                            img.save_with_format(&temp_filepath_clone, output_format)
+                                .context("Failed to save converted image")?;
+                        }
+
+                        let _ = app_inner.emit("image-conversion-progress", ImageConversionProgress {
+                            id: id_inner,
+                            progress: 90,
+                            message: "Saving to DB...".to_string(),
+                        });
+
+                        Ok(())
+                    }).await;
+
+                    match convert_result {
+                        Ok(Ok(_)) => {
+                            if let Err(e) = fs::rename(&temp_filepath, &final_filepath) {
+                                log::error!("Failed to rename temp file: {}", e);
+                                let _ = fs::remove_file(&temp_filepath);
+                                return false;
+                            }
+
+                            let size = fs::metadata(&final_filepath).map(|m| m.len() as i64).ok();
+                            let fp = dunce::canonicalize(&final_filepath).unwrap_or(final_filepath).to_string_lossy().to_string();
+
+                            let insert_result = sqlx::query(
+                                "INSERT OR REPLACE INTO converted_images (original_id, filepath, format, size) VALUES (?, ?, ?, ?)"
+                            )
+                            .bind(id)
+                            .bind(fp)
+                            .bind(&target_format)
+                            .bind(size)
+                            .execute(&pool_clone)
+                            .await;
+
+                            if insert_result.is_ok() {
+                                let _ = app_clone.emit("image-conversion-progress", ImageConversionProgress {
+                                    id,
+                                    progress: 100,
+                                    message: "Done".to_string(),
+                                });
+                                let _ = app_clone.emit("images-updated", ());
+                                return true;
+                            }
+                        },
+                        Ok(Err(e)) => {
+                            log::error!("Image conversion error for ID {}: {}", id, e);
+                            let _ = fs::remove_file(&temp_filepath);
+                        },
+                        Err(e) => {
+                            log::error!("Tokio spawn error for ID {}: {}", id, e);
+                            let _ = fs::remove_file(&temp_filepath);
+                        }
+                    }
+
+                    let _ = app_clone.emit("image-conversion-progress", ImageConversionProgress {
+                        id,
+                        progress: 0,
+                        message: "Failed".to_string(),
+                    });
+                }
+                false
+            }
+        })
+        .buffer_unordered(concurrency_limit)
+        .collect()
+        .await;
+
+    let converted_count = results.into_iter().filter(|&success| success).count();
+    Ok(converted_count)
 }
 

@@ -25,6 +25,7 @@ import {
   Scissors,
   Info,
   Minimize2,
+  Repeat2,
 } from 'lucide-react'
 import { useRow } from '@/schema/tinybase-schema'
 import { ImageCompare } from '@/components/image-compare'
@@ -40,9 +41,9 @@ interface ImageGridProps {
   onCompressClick?: (ids: number[]) => void
   onUpscaleClick?: (ids: number[]) => void
   onBgRemovalClick?: (ids: number[]) => void
+  onConvertClick?: (ids: number[]) => void
 }
 
-// Memoized item renderer to prevent unnecessary re-renders
 const ImageGridItem = memo(function ImageGridItem({
   image,
   isSelected,
@@ -53,6 +54,7 @@ const ImageGridItem = memo(function ImageGridItem({
   onCompressClick,
   onUpscaleClick,
   onBgRemovalClick,
+  onConvertClick,
 }: {
   image: Image
   isSelected: boolean
@@ -63,11 +65,13 @@ const ImageGridItem = memo(function ImageGridItem({
   onCompressClick?: (ids: number[]) => void
   onUpscaleClick?: (ids: number[]) => void
   onBgRemovalClick?: (ids: number[]) => void
+  onConvertClick?: (ids: number[]) => void
 }) {
   const [imageError, setImageError] = useState(false)
   const compressingState = useRow('compressions', image.id.toString())
   const upscalingState = useRow('upscalings', image.id.toString())
   const bgRemovalState = useRow('bg_removals', image.id.toString())
+  const conversionState = useRow('image_conversions', image.id.toString())
 
   // Parse upscaled_versions from JSON string
   const upscaledVersions = useMemo(() => {
@@ -154,6 +158,24 @@ const ImageGridItem = memo(function ImageGridItem({
     }
   }, [image.bg_removed_filepath])
 
+  const handleOpenConverted = useCallback(async () => {
+    if (!image.converted_filepath) return
+    try {
+      await openFile(image.converted_filepath)
+    } catch (err) {
+      logError(`Failed to open converted file: ${err}`)
+    }
+  }, [image.converted_filepath])
+
+  const handleRevealConverted = useCallback(async () => {
+    if (!image.converted_filepath) return
+    try {
+      await revealInExplorer(image.converted_filepath)
+    } catch (err) {
+      logError(`Failed to reveal converted file: ${err}`)
+    }
+  }, [image.converted_filepath])
+
   const handleClick = useCallback(
     (e: React.MouseEvent) => onSelect(image.id, e),
     [image.id, onSelect]
@@ -233,11 +255,20 @@ const ImageGridItem = memo(function ImageGridItem({
                     <Scissors className="h-2.5 w-2.5" />
                   </span>
                 )}
+                {image.converted_filepath && (
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white"
+                    title="Converted"
+                  >
+                    <Repeat2 className="h-2.5 w-2.5" />
+                  </span>
+                )}
               </div>
 
               {(image.compressed_filepath ||
                 upscaledVersions.length > 0 ||
-                image.bg_removed_filepath) && (
+                image.bg_removed_filepath ||
+                image.converted_filepath) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
@@ -268,6 +299,12 @@ const ImageGridItem = memo(function ImageGridItem({
                           <span className="font-medium">{formatBytes(image.bg_removed_size)}</span>
                         </div>
                       )}
+                      {image.converted_size && (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-orange-600">Converted:</span>
+                          <span className="font-medium">{formatBytes(image.converted_size)} ({image.converted_format?.toUpperCase()})</span>
+                        </div>
+                      )}
                     </div>
                   </TooltipContent>
                 </Tooltip>
@@ -283,20 +320,23 @@ const ImageGridItem = memo(function ImageGridItem({
 
             {(Object.keys(compressingState).length > 0 ||
               Object.keys(upscalingState).length > 0 ||
-              Object.keys(bgRemovalState).length > 0) && (
+              Object.keys(bgRemovalState).length > 0 ||
+              Object.keys(conversionState).length > 0) && (
               <div className="bg-background/80 absolute inset-0 z-10 flex flex-col items-center justify-center p-2">
                 <Progress
                   value={
                     (compressingState.progress as number) ||
                     (upscalingState.progress as number) ||
-                    (bgRemovalState.progress as number)
+                    (bgRemovalState.progress as number) ||
+                    (conversionState.progress as number)
                   }
                   className="mb-1.5 h-1.5 w-full"
                 />
                 <span className="text-[10px] font-medium">
                   {(compressingState.message as string) ||
                     (upscalingState.message as string) ||
-                    (bgRemovalState.message as string)}
+                    (bgRemovalState.message as string) ||
+                    (conversionState.message as string)}
                 </span>
               </div>
             )}
@@ -315,7 +355,7 @@ const ImageGridItem = memo(function ImageGridItem({
           Reveal Original
         </ContextMenuItem>
 
-        {(onCompressClick || onUpscaleClick || onBgRemovalClick) && (
+        {(onCompressClick || onUpscaleClick || onBgRemovalClick || onConvertClick) && (
           <>
             <ContextMenuSeparator />
             <ContextMenuLabel>Actions</ContextMenuLabel>
@@ -337,12 +377,19 @@ const ImageGridItem = memo(function ImageGridItem({
                 Remove Background
               </ContextMenuItem>
             )}
+            {onConvertClick && (
+              <ContextMenuItem onClick={() => onConvertClick([image.id])}>
+                <Repeat2 className="mr-2 h-4 w-4" />
+                Convert Format
+              </ContextMenuItem>
+            )}
           </>
         )}
 
         {(image.compressed_filepath ||
           upscaledVersions.length > 0 ||
-          image.bg_removed_filepath) && (
+          image.bg_removed_filepath ||
+          image.converted_filepath) && (
           <>
             <ContextMenuSeparator />
             <ContextMenuLabel>Versions</ContextMenuLabel>
@@ -409,6 +456,19 @@ const ImageGridItem = memo(function ImageGridItem({
                 </ContextMenuItem>
               </>
             )}
+
+            {image.converted_filepath && (
+              <>
+                <ContextMenuItem onClick={handleOpenConverted}>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Open Converted ({image.converted_format?.toUpperCase()})
+                </ContextMenuItem>
+                <ContextMenuItem onClick={handleRevealConverted}>
+                  <FolderSearch className="mr-2 h-4 w-4" />
+                  Reveal Converted
+                </ContextMenuItem>
+              </>
+            )}
           </>
         )}
 
@@ -432,6 +492,7 @@ export function ImageGrid({
   onCompressClick,
   onUpscaleClick,
   onBgRemovalClick,
+  onConvertClick,
 }: ImageGridProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [compareImage, setCompareImage] = useState<Image | null>(null)
@@ -529,6 +590,7 @@ export function ImageGrid({
               onCompressClick={onCompressClick}
               onUpscaleClick={onUpscaleClick}
               onBgRemovalClick={onBgRemovalClick}
+              onConvertClick={onConvertClick}
             />
           ))}
         </div>

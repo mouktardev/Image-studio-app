@@ -30,6 +30,7 @@ Open-source desktop application for image optimization with AI-powered tools. Bu
 
 - **Image Compression** - Optimize images with adjustable quality settings and bounded concurrency
 - **Video Compression** - Compress videos with quality presets (Ultra Fast to Very Slow) using FFmpeg
+- **Format Conversion** - Convert images (JPEG, PNG, WebP) and videos (MP4, WebM, MOV, GIF) between formats
 - **Background Removal** - AI-powered background removal for images and videos
 - **Batch Processing** - Process multiple images/videos simultaneously with per-item progress tracking
 - **AI-Powered upscale** - Local AI processing for image upscale
@@ -176,6 +177,5 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ### Roadmap (planned)
 
-- [ ] Add advanced **Format Conversion** options.
 - [ ] Add image editor.
 - [ ] Add video editor with advanced effects.
