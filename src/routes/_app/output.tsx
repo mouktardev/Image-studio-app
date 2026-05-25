@@ -76,6 +76,7 @@ type OutputImage = {
   displaySize: number | null
   upscaled_scale?: number
   isVideo?: boolean
+  thumbnailPath?: string | null
 }
 
 function parseUpscaledVersions(
@@ -132,13 +133,13 @@ const OutputGridItem = memo(function OutputGridItem({ image }: { image: OutputIm
             }}
           >
             {!imageError ? (
-              isVideoCompressed ? (
-                <video
-                  src={convertFileSrc(image.displayFilepath)}
+              isVideoCompressed && image.thumbnailPath ? (
+                <img
+                  src={convertFileSrc(image.thumbnailPath)}
+                  alt={image.filename}
                   className="size-full object-cover"
-                  muted
-                  preload="metadata"
                   onError={() => setImageError(true)}
+                  loading="lazy"
                 />
               ) : (
                 <img
@@ -383,6 +384,7 @@ function OutputPage() {
         displayFilepath: video.compressed_filepath!,
         displaySize: video.compressed_size ?? null,
         isVideo: true,
+        thumbnailPath: video.thumbnail_path,
       }))
 
     let allImages: OutputImage[]
@@ -441,7 +443,12 @@ function OutputPage() {
             </Button>
           </TooltipTrigger>
           <TooltipContent>
-            All ({loaderData.compressedImages.length + loaderData.upscaledImages.length + loaderData.bgRemovedImages.length + loaderData.compressedVideos.length})
+            All (
+            {loaderData.compressedImages.length +
+              loaderData.upscaledImages.length +
+              loaderData.bgRemovedImages.length +
+              loaderData.compressedVideos.length}
+            )
           </TooltipContent>
         </Tooltip>
         <Tooltip>
@@ -454,9 +461,7 @@ function OutputPage() {
               <Minimize2 className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Compressed ({loaderData.compressedImages.length})
-          </TooltipContent>
+          <TooltipContent>Compressed ({loaderData.compressedImages.length})</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -468,9 +473,7 @@ function OutputPage() {
               <Maximize2 className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Upscaled ({loaderData.upscaledImages.length})
-          </TooltipContent>
+          <TooltipContent>Upscaled ({loaderData.upscaledImages.length})</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -482,9 +485,7 @@ function OutputPage() {
               <Scissors className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Background Removed ({loaderData.bgRemovedImages.length})
-          </TooltipContent>
+          <TooltipContent>Background Removed ({loaderData.bgRemovedImages.length})</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
@@ -496,13 +497,15 @@ function OutputPage() {
               <Video className="size-4" />
             </Button>
           </TooltipTrigger>
-          <TooltipContent>
-            Video Compressed ({loaderData.compressedVideos.length})
-          </TooltipContent>
+          <TooltipContent>Video Compressed ({loaderData.compressedVideos.length})</TooltipContent>
         </Tooltip>
         {/* Search and sort row */}
         <div className="ml-auto flex items-center gap-2">
-          <SearchBar value={searchQuery} onChange={setSearchQuery} placeholder="Enter file name" />
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search images or videos..."
+          />
           <SortDropdown
             sortField={sortField}
             sortOrder={sortOrder}

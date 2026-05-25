@@ -43,7 +43,7 @@ export function AppSidebar() {
             asChild
             tooltip={isCollapsed ? `Image Studio v${packageJson.version}` : undefined}
           >
-            <div className="flex items-center gap-2 px-2 py-1">
+            <div className="flex items-center gap-2 px-2 py-7">
               <img
                 src="/app-icon.png"
                 alt="Image Studio"
@@ -90,11 +90,11 @@ export function AppSidebar() {
                 <SidebarMenuButton
                   asChild
                   isActive={isOutputActive}
-                  tooltip={isCollapsed ? 'Processed' : undefined}
+                  tooltip={isCollapsed ? 'Output' : undefined}
                 >
                   <Link to="/output">
                     <Folder className="h-4 w-4" />
-                    <span>Processed</span>
+                    <span>Output</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -93,7 +93,7 @@ export function ImageTools({
         <>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={onCompressClick}>
+              <Button onClick={onCompressClick} size="icon">
                 <Minimize2 className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -102,7 +102,7 @@ export function ImageTools({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={onUpscaleClick}>
+              <Button onClick={onUpscaleClick} size="icon">
                 <Maximize2 className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -111,7 +111,7 @@ export function ImageTools({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button onClick={onBgRemovalClick}>
+              <Button onClick={onBgRemovalClick} size="icon">
                 <Scissors className="size-4" />
               </Button>
             </TooltipTrigger>
@@ -120,7 +120,7 @@ export function ImageTools({
 
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)}>
+              <Button variant="destructive" onClick={() => setOpenDeleteDialog(true)} size="icon">
                 <Trash2 className="size-4" />
               </Button>
             </TooltipTrigger>

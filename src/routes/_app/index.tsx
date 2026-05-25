@@ -13,6 +13,7 @@ import {
   checkDbHealth,
   getFilters,
   updateFilters,
+  resetFilters,
   type Image,
 } from '@/lib/tauri'
 import {
@@ -26,7 +27,6 @@ import {
 import { error as logError } from '@/lib/logger'
 import { ImageTools } from '@/components/image-tools'
 import { useSetValueCallback } from '@/schema/tinybase-schema'
-import { useFilters } from '@/hooks/use-filters'
 import { CompressDialog, UpscaleDialog, BgRemovalDialog } from '@/components/dialogs'
 
 export const Route = createFileRoute('/_app/')({
@@ -66,8 +66,23 @@ function IndexPage() {
   )
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>(loaderData.filters.sort_order)
 
-  // Use filters hook for reset functionality
-  const { resetFilters } = useFilters('index')
+  const resetFiltersHandler = useCallback(async () => {
+    try {
+      const data = await resetFilters('index')
+      setSearchQuery(data.search_query)
+      setSortField(data.sort_field)
+      setSortOrder(data.sort_order)
+      const params = {
+        search: data.search_query || undefined,
+        sort_field: data.sort_field as 'name' | 'size' | 'date',
+        sort_order: data.sort_order as 'asc' | 'desc',
+      }
+      const result = await getAllImages(params)
+      setImages(result)
+    } catch (err) {
+      logError(`Failed to reset filters: ${err}`)
+    }
+  }, [])
 
   const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
 
@@ -340,7 +355,7 @@ function IndexPage() {
         onSortFieldChange={setSortField}
         onSortOrderChange={setSortOrder}
         hasActiveFilters={hasActiveFilters}
-        onResetFilters={resetFilters}
+          onResetFilters={resetFiltersHandler}
       />
       <ImageGrid
         images={images}

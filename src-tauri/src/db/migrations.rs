@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Manager};
+use log;
 
 pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_images_table(pool).await?;
@@ -12,6 +13,7 @@ pub async fn run_migrations(pool: &SqlitePool, app: &AppHandle) -> Result<()> {
     create_upscaled_images_table(pool).await?;
     create_bg_removed_images_table(pool).await?;
     create_videos_table(pool).await?;
+    alter_videos_add_thumbnail(pool).await?;
     create_bg_removed_videos_table(pool).await?;
     create_compressed_videos_table(pool).await?;
     create_filters_table(pool).await?;
@@ -284,6 +286,23 @@ async fn create_videos_table(pool: &SqlitePool) -> Result<()> {
         .await
         .context("Failed to create unique index on videos filepath")?;
 
+    Ok(())
+}
+
+async fn alter_videos_add_thumbnail(pool: &SqlitePool) -> Result<()> {
+    match sqlx::query("ALTER TABLE videos ADD COLUMN thumbnail_path TEXT")
+        .execute(pool)
+        .await
+    {
+        Ok(_) => log::info!("Added thumbnail_path column to videos table"),
+        Err(e) => {
+            if e.to_string().contains("duplicate column") {
+                // Column already exists, that's fine
+            } else {
+                return Err(e.into());
+            }
+        }
+    }
     Ok(())
 }
 

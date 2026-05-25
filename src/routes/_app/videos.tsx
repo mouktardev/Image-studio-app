@@ -12,6 +12,7 @@ import {
   resetFilters,
   getCompressionPresets,
   compressVideosByIds,
+  generateVideoThumbnails,
   type CompressionPreset,
 } from '@/lib/tauri'
 import type { Video, VideoQueryParams } from '@/lib/tauri'
@@ -25,7 +26,7 @@ import {
 import { VideoGrid } from '@/components/video-grid'
 import { VideoTools } from '@/components/video-tools'
 import { CompressVideoDialog } from '@/components/dialogs/compress-video-dialog'
-import { error as logError } from '@/lib/logger'
+import { error as logError, info as logInfo } from '@/lib/logger'
 import { toast } from '@/lib/notifications'
 import {
   Dialog,
@@ -83,6 +84,16 @@ function VideosPage() {
       .catch((err) => {
         logError(`Failed to load compression presets: ${err}`)
       })
+  }, [])
+
+  useEffect(() => {
+    generateVideoThumbnails()
+      .then((count) => {
+        if (count > 0) {
+          logInfo(`Generated ${count} video thumbnail(s)`)
+        }
+      })
+      .catch((err) => logError(`Failed to generate thumbnails: ${err}`))
   }, [])
 
   const hasActiveFilters = searchQuery !== '' || sortField !== 'date' || sortOrder !== 'desc'

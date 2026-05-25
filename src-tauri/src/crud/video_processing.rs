@@ -54,6 +54,7 @@ pub struct Video {
     pub height: Option<i64>,
     pub duration: Option<f64>,
     pub fps: Option<f64>,
+    pub thumbnail_path: Option<String>,
     pub bg_removed_filepath: Option<String>,
     pub bg_removed_size: Option<i64>,
     pub bg_removed_model: Option<String>,
@@ -324,6 +325,7 @@ fn guess_mimetype(path: &PathBuf) -> String {
 
 #[tauri::command]
 pub async fn import_videos(
+    app: AppHandle,
     state: State<'_, DbState>,
     paths: Vec<String>,
 ) -> Result<VideoImportResult, String> {
@@ -335,6 +337,8 @@ pub async fn import_videos(
     if !ffmpeg_available || !ffprobe_available {
         return Err("FFmpeg is required to import videos. Please download it first in Settings.".to_string());
     }
+
+    let thumbnails_dir = get_thumbnails_dir(&app);
 
     let mut imported_count: i64 = 0;
     let mut duplicates: i64 = 0;
@@ -399,7 +403,18 @@ pub async fn import_videos(
         .await;
 
         match result {
-            Ok(_) => {
+            Ok(row) => {
+                let video_id = row.last_insert_rowid();
+                let thumbnail_path = thumbnails_dir.join(format!("{}.jpg", video_id));
+                if extract_video_thumbnail(&path, &thumbnail_path).is_ok() {
+                    if let Some(thumb_str) = thumbnail_path.to_str().map(|s| s.to_string()) {
+                        let _ = sqlx::query("UPDATE videos SET thumbnail_path = ? WHERE id = ?")
+                            .bind(&thumb_str)
+                            .bind(video_id)
+                            .execute(&pool)
+                            .await;
+                    }
+                }
                 imported_count += 1;
             }
             Err(e) => {
@@ -410,6 +425,61 @@ pub async fn import_videos(
     }
 
     Ok(VideoImportResult { imported: imported_count, duplicates, failed })
+}
+
+fn get_thumbnails_dir(app: &AppHandle) -> PathBuf {
+    let dir = if cfg!(debug_assertions) {
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| {
+                std::env::current_dir().expect("Failed to get current directory")
+            });
+        let project_root = manifest_dir.parent().unwrap_or(&manifest_dir);
+        project_root.join("data").join("thumbnails")
+    } else {
+        let app_data_dir = app
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| PathBuf::from("."));
+        app_data_dir.join("thumbnails")
+    };
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
+fn extract_video_thumbnail(video_path: &PathBuf, output_path: &PathBuf) -> Result<()> {
+    let ffmpeg_path = get_ffmpeg_path();
+    if !ffmpeg_path.exists() {
+        anyhow::bail!("FFmpeg not found");
+    }
+
+    let mut cmd = Command::new(&ffmpeg_path);
+    cmd.args([
+            "-ss", "00:00:01",
+            "-i", &video_path.to_string_lossy(),
+            "-vframes", "1",
+            "-q:v", "2",
+            "-y",
+            &output_path.to_string_lossy(),
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+
+    let output = cmd.output().context("Failed to run ffmpeg for thumbnail extraction")?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("FFmpeg thumbnail extraction failed: {}", stderr);
+    }
+
+    Ok(())
 }
 
 #[derive(Clone, Serialize)]
@@ -646,7 +716,7 @@ pub async fn get_all_videos(
     };
 
     let query = format!(
-        "SELECT id, filename, filepath, mimetype, size, width, height, duration, fps FROM videos v {} {}",
+        "SELECT id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path FROM videos v {} {}",
         search_clause, order_clause
     );
 
@@ -662,6 +732,7 @@ pub async fn get_all_videos(
             Option<i64>,
             Option<f64>,
             Option<f64>,
+            Option<String>,
         ),
     >(&query)
     .fetch_all(&pool)
@@ -692,7 +763,7 @@ pub async fn get_all_videos(
         comp_map.insert(orig_id, (fp, sz));
     }
 
-    let videos: Vec<Video> = rows.into_iter().map(|(id, filename, filepath, mimetype, size, width, height, duration, fps)| {
+    let videos: Vec<Video> = rows.into_iter().map(|(id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path)| {
         let (bg_removed_filepath, bg_removed_size, bg_removed_model) = match bg_map.get(&id) {
             Some((fp, sz, model)) => (Some(fp.clone()), *sz, Some(model.clone())),
             None => (None, None, None),
@@ -702,7 +773,7 @@ pub async fn get_all_videos(
             None => (None, None),
         };
         Video {
-            id, filename, filepath, mimetype, size, width, height, duration, fps,
+            id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path,
             bg_removed_filepath, bg_removed_size, bg_removed_model,
             compressed_filepath, compressed_size,
         }
@@ -724,6 +795,21 @@ pub async fn delete_videos_by_ids(
 
     let placeholders = ids.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
 
+    // Fetch thumbnail paths before deleting rows
+    let thumb_query = format!("SELECT id, thumbnail_path FROM videos WHERE id IN ({})", placeholders);
+    let mut tq = sqlx::query_as::<_, (i64, Option<String>)>(&thumb_query);
+    for id in &ids {
+        tq = tq.bind(id);
+    }
+    let thumb_rows: Vec<(i64, Option<String>)> = tq.fetch_all(&pool).await.map_err(|e| e.to_string())?;
+
+    // Delete thumbnail files from disk
+    for (_, thumb_path) in &thumb_rows {
+        if let Some(path) = thumb_path {
+            let _ = fs::remove_file(path);
+        }
+    }
+
     let br_query = format!("DELETE FROM bg_removed_videos WHERE original_id IN ({})", placeholders);
     let mut br_q = sqlx::query(&br_query);
     for id in &ids {
@@ -739,6 +825,43 @@ pub async fn delete_videos_by_ids(
     q.execute(&pool).await.map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn generate_video_thumbnails(
+    app: AppHandle,
+    state: State<'_, DbState>,
+) -> Result<usize, String> {
+    let pool = state.0.clone();
+    let thumbnails_dir = get_thumbnails_dir(&app);
+
+    let rows: Vec<(i64, String)> = sqlx::query_as(
+        "SELECT id, filepath FROM videos WHERE thumbnail_path IS NULL"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut generated = 0;
+    for (id, filepath) in &rows {
+        let thumb_path = thumbnails_dir.join(format!("{}.jpg", id));
+        let video_path = PathBuf::from(filepath);
+        if extract_video_thumbnail(&video_path, &thumb_path).is_ok() {
+            if let Some(thumb_str) = thumb_path.to_str().map(|s| s.to_string()) {
+                if sqlx::query("UPDATE videos SET thumbnail_path = ? WHERE id = ?")
+                    .bind(&thumb_str)
+                    .bind(id)
+                    .execute(&pool)
+                    .await
+                    .is_ok()
+                {
+                    generated += 1;
+                }
+            }
+        }
+    }
+
+    Ok(generated)
 }
 
 #[tauri::command]
@@ -769,6 +892,7 @@ pub async fn get_all_bg_removed_videos(state: State<'_, DbState>) -> Result<Vec<
             height: row.6,
             duration: row.7,
             fps: row.8,
+            thumbnail_path: None,
             bg_removed_filepath: Some(row.2),
             bg_removed_size: row.4,
             bg_removed_model: Some(row.3),
@@ -784,10 +908,10 @@ pub async fn get_all_bg_removed_videos(state: State<'_, DbState>) -> Result<Vec<
 pub async fn get_all_compressed_videos(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
     let pool = state.0.clone();
 
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<i64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>)>(
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<i64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>, Option<String>)>(
         r#"
         SELECT v.id, v.filename, c.filepath, c.size,
-               v.width, v.height, v.duration, v.fps
+               v.width, v.height, v.duration, v.fps, v.thumbnail_path
         FROM videos v
         INNER JOIN compressed_videos c ON v.id = c.original_id
         ORDER BY v.id DESC
@@ -808,6 +932,7 @@ pub async fn get_all_compressed_videos(state: State<'_, DbState>) -> Result<Vec<
             height: row.5,
             duration: row.6,
             fps: row.7,
+            thumbnail_path: row.8,
             bg_removed_filepath: None,
             bg_removed_size: None,
             bg_removed_model: None,

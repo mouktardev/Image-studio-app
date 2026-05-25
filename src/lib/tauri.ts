@@ -213,6 +213,7 @@ export interface Video {
   height: number | null
   duration: number | null
   fps: number | null
+  thumbnail_path?: string | null
   bg_removed_filepath?: string | null
   bg_removed_size?: number | null
   bg_removed_model?: string | null
@@ -261,6 +262,10 @@ export async function importVideos(paths: string[]): Promise<VideoImportResult> 
 
 export async function getAllVideos(params?: VideoQueryParams): Promise<Video[]> {
   return invoke<Video[]>('get_all_videos', { params: params ?? null })
+}
+
+export async function generateVideoThumbnails(): Promise<number> {
+  return invoke<number>('generate_video_thumbnails')
 }
 
 export async function deleteVideosByIds(ids: number[]): Promise<void> {

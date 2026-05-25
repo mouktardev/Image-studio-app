@@ -246,7 +246,9 @@ function SettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Output Folder</CardTitle>
-            <CardDescription>Configure where processed images will be saved</CardDescription>
+            <CardDescription>
+              Configure where processed images and videos will be saved
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex items-center gap-2">

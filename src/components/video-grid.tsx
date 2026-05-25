@@ -42,11 +42,10 @@ const VideoGridItem = memo(function VideoGridItem({
   onDelete: (id: number) => void
   onCompressClick?: (ids: number[]) => void
 }) {
-  const [thumbnailError, setThumbnailError] = useState(false)
   const bgRemovalState = useRow('video_bg_removals', video.id.toString())
   const compressionState = useRow('video_compressions', video.id.toString())
 
-  const src = thumbnailError ? '' : convertFileSrc(video.filepath)
+  const thumbnailSrc = video.thumbnail_path ? convertFileSrc(video.thumbnail_path) : ''
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => onSelect(video.id, e),
@@ -130,14 +129,8 @@ const VideoGridItem = memo(function VideoGridItem({
               backgroundColor: '#fff',
             }}
           >
-            {src && !thumbnailError ? (
-              <video
-                src={src}
-                className="size-full object-cover"
-                muted
-                preload="metadata"
-                onError={() => setThumbnailError(true)}
-              />
+            {thumbnailSrc ? (
+              <img src={thumbnailSrc} className="size-full object-cover" alt="" />
             ) : (
               <div className="flex size-full items-center justify-center">
                 <Play className="text-muted-foreground h-8 w-8" />
