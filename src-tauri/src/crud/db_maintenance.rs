@@ -91,6 +91,32 @@ pub async fn check_db_health(state: State<'_, DbState>) -> Result<i64, String> {
         }
     }
 
+    // 8. Check converted images
+    let converted_images: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, filepath FROM converted_images")
+            .fetch_all(&state.0)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    for (_id, filepath) in converted_images {
+        if !std::path::Path::new(&filepath).exists() {
+            orphan_count += 1;
+        }
+    }
+
+    // 9. Check converted videos
+    let converted_videos: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, filepath FROM converted_videos")
+            .fetch_all(&state.0)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    for (_id, filepath) in converted_videos {
+        if !std::path::Path::new(&filepath).exists() {
+            orphan_count += 1;
+        }
+    }
+
     Ok(orphan_count)
 }
 
@@ -122,6 +148,13 @@ pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
 
             // Delete associated background removed images
             sqlx::query("DELETE FROM bg_removed_images WHERE original_id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            // Delete associated converted images
+            sqlx::query("DELETE FROM converted_images WHERE original_id = ?")
                 .bind(id)
                 .execute(&state.0)
                 .await
@@ -214,6 +247,13 @@ pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
                 .await
                 .map_err(|e| e.to_string())?;
 
+            // Delete associated converted videos
+            sqlx::query("DELETE FROM converted_videos WHERE original_id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+
             // Delete original video
             sqlx::query("DELETE FROM videos WHERE id = ?")
                 .bind(id)
@@ -254,6 +294,44 @@ pub async fn sync_database(state: State<'_, DbState>) -> Result<i64, String> {
     for (id, filepath) in bg_removed_videos {
         if !std::path::Path::new(&filepath).exists() {
             sqlx::query("DELETE FROM bg_removed_videos WHERE id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            deleted_count += 1;
+        }
+    }
+
+    // 8. Check converted images
+    let converted_images: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, filepath FROM converted_images")
+            .fetch_all(&state.0)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    for (id, filepath) in converted_images {
+        if !std::path::Path::new(&filepath).exists() {
+            sqlx::query("DELETE FROM converted_images WHERE id = ?")
+                .bind(id)
+                .execute(&state.0)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            deleted_count += 1;
+        }
+    }
+
+    // 9. Check converted videos
+    let converted_videos: Vec<(i64, String)> =
+        sqlx::query_as("SELECT id, filepath FROM converted_videos")
+            .fetch_all(&state.0)
+            .await
+            .map_err(|e| e.to_string())?;
+
+    for (id, filepath) in converted_videos {
+        if !std::path::Path::new(&filepath).exists() {
+            sqlx::query("DELETE FROM converted_videos WHERE id = ?")
                 .bind(id)
                 .execute(&state.0)
                 .await
