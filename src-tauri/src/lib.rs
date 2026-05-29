@@ -105,18 +105,14 @@ pub fn run() {
             app.handle().manage(CancelTokens(std::sync::Mutex::new(std::collections::HashMap::new())));
 
             let handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                match init_db(&handle).await {
-                    Ok((pool, path)) => {
-                        handle.manage(DbState(pool));
-                        let _ = DB_INITIALIZED.set(());
-                        log::info!("[DB] Initialized at: {:?}", path);
-                    }
-                    Err(e) => {
-                        log::error!("[DB] Failed to initialize: {}", e);
-                    }
-                }
-            });
+            let (pool, path) = tauri::async_runtime::block_on(init_db(&handle))
+                .map_err(|e| {
+                    log::error!("[DB] Failed to initialize: {}", e);
+                    e
+                })?;
+            handle.manage(DbState(pool));
+            let _ = DB_INITIALIZED.set(());
+            log::info!("[DB] Initialized at: {:?}", path);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
