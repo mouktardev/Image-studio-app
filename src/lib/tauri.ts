@@ -9,6 +9,12 @@ export interface UpscaledVersion {
   model: string | null
 }
 
+export interface ConvertedImage {
+  filepath: string
+  size: number | null
+  format: string
+}
+
 export interface Image {
   id: number
   filename: string
@@ -22,9 +28,7 @@ export interface Image {
   upscaled_versions?: UpscaledVersion[] // JSON parsed from backend
   bg_removed_filepath?: string | null
   bg_removed_size?: number | null
-  converted_filepath?: string | null
-  converted_size?: number | null
-  converted_format?: string | null
+  converted_images: ConvertedImage[]
 }
 
 export interface AddImageData {
@@ -206,6 +210,12 @@ export async function getAllBgRemovedImages(): Promise<Image[]> {
 }
 
 // Video Processing API
+export interface ConvertedVideo {
+  filepath: string
+  size: number | null
+  format: string
+}
+
 export interface Video {
   id: number
   filename: string
@@ -222,9 +232,7 @@ export interface Video {
   bg_removed_model?: string | null
   compressed_filepath?: string | null
   compressed_size?: number | null
-  converted_filepath?: string | null
-  converted_size?: number | null
-  converted_format?: string | null
+  converted_videos: ConvertedVideo[]
 }
 
 export interface FfmpegStatus {

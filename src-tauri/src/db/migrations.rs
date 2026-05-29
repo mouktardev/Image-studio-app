@@ -108,11 +108,6 @@ async fn insert_default_settings(pool: &SqlitePool, app: &AppHandle) -> Result<(
         .await
         .context("Failed to insert default 'bg_removal_model' setting")?;
 
-    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('ffmpeg_downloaded', '0')")
-        .execute(pool)
-        .await
-        .context("Failed to insert default 'ffmpeg_downloaded' setting")?;
-
     Ok(())
 }
 
@@ -351,11 +346,12 @@ async fn create_converted_images_table(pool: &SqlitePool) -> Result<()> {
         r#"
         CREATE TABLE IF NOT EXISTS converted_images (
             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-            original_id INTEGER NOT NULL UNIQUE,
+            original_id INTEGER NOT NULL,
             filepath TEXT NOT NULL,
             format TEXT NOT NULL,
             size INTEGER,
-            FOREIGN KEY (original_id) REFERENCES images(id) ON DELETE CASCADE
+            FOREIGN KEY (original_id) REFERENCES images(id) ON DELETE CASCADE,
+            UNIQUE(original_id, format)
         )
         "#,
     )
@@ -371,11 +367,12 @@ async fn create_converted_videos_table(pool: &SqlitePool) -> Result<()> {
         r#"
         CREATE TABLE IF NOT EXISTS converted_videos (
             id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-            original_id INTEGER NOT NULL UNIQUE,
+            original_id INTEGER NOT NULL,
             filepath TEXT NOT NULL,
             format TEXT NOT NULL,
             size INTEGER,
-            FOREIGN KEY (original_id) REFERENCES videos(id) ON DELETE CASCADE
+            FOREIGN KEY (original_id) REFERENCES videos(id) ON DELETE CASCADE,
+            UNIQUE(original_id, format)
         )
         "#,
     )

@@ -553,6 +553,9 @@ function SettingsPage() {
               <div className="flex items-center gap-2">
                 <Video className="text-muted-foreground h-5 w-5" />
                 <h3 className="font-semibold">FFmpeg</h3>
+                <span className="text-muted-foreground text-xs">
+                  Download FFmpeg for video compression and format conversion
+                </span>
               </div>
 
               <div className="space-y-3">
@@ -560,20 +563,12 @@ function SettingsPage() {
                   <Label className="text-sm">FFmpeg Status</Label>
                   <div className="flex items-center gap-2">
                     <Badge variant={ffmpegStatus?.available ? 'default' : 'secondary'}>
-                      {ffmpegStatus?.available ? 'Available' : 'Not Installed'}
+                      {ffmpegStatus?.available ? 'Downloaded' : 'Not Downloaded'}
                     </Badge>
-                    {ffmpegStatus?.available && ffmpegStatus.source === 'system' && (
-                      <Badge variant="outline">System</Badge>
-                    )}
-                    {ffmpegStatus?.available && ffmpegStatus.source === 'sidecar' && (
-                      <Badge variant="outline">Downloaded</Badge>
-                    )}
                     <span className="text-muted-foreground text-xs">
                       {ffmpegStatus?.available && ffmpegStatus?.size
                         ? formatBytes(ffmpegStatus.size)
-                        : ffmpegStatus?.available
-                          ? ''
-                          : '~80 MB download'}
+                        : '~80 MB download'}
                     </span>
                     {ffmpegStatus?.available && (
                       <Button

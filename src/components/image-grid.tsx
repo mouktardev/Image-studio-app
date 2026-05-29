@@ -6,6 +6,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
   ContextMenuLabel,
 } from '@/components/ui/context-menu'
@@ -158,23 +161,27 @@ const ImageGridItem = memo(function ImageGridItem({
     }
   }, [image.bg_removed_filepath])
 
-  const handleOpenConverted = useCallback(async () => {
-    if (!image.converted_filepath) return
-    try {
-      await openFile(image.converted_filepath)
-    } catch (err) {
-      logError(`Failed to open converted file: ${err}`)
-    }
-  }, [image.converted_filepath])
+  const handleOpenConverted = useCallback(
+    async (filepath: string) => {
+      try {
+        await openFile(filepath)
+      } catch (err) {
+        logError(`Failed to open converted file: ${err}`)
+      }
+    },
+    []
+  )
 
-  const handleRevealConverted = useCallback(async () => {
-    if (!image.converted_filepath) return
-    try {
-      await revealInExplorer(image.converted_filepath)
-    } catch (err) {
-      logError(`Failed to reveal converted file: ${err}`)
-    }
-  }, [image.converted_filepath])
+  const handleRevealConverted = useCallback(
+    async (filepath: string) => {
+      try {
+        await revealInExplorer(filepath)
+      } catch (err) {
+        logError(`Failed to reveal converted file: ${err}`)
+      }
+    },
+    []
+  )
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => onSelect(image.id, e),
@@ -255,10 +262,10 @@ const ImageGridItem = memo(function ImageGridItem({
                     <Scissors className="h-2.5 w-2.5" />
                   </span>
                 )}
-                {image.converted_filepath && (
+                {image.converted_images.length > 0 && (
                   <span
                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white"
-                    title="Converted"
+                    title={`Converted (${image.converted_images.length})`}
                   >
                     <Repeat2 className="h-2.5 w-2.5" />
                   </span>
@@ -268,7 +275,7 @@ const ImageGridItem = memo(function ImageGridItem({
               {(image.compressed_filepath ||
                 upscaledVersions.length > 0 ||
                 image.bg_removed_filepath ||
-                image.converted_filepath) && (
+                image.converted_images.length > 0) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
@@ -299,12 +306,12 @@ const ImageGridItem = memo(function ImageGridItem({
                           <span className="font-medium">{formatBytes(image.bg_removed_size)}</span>
                         </div>
                       )}
-                      {image.converted_size && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-orange-600">Converted:</span>
-                          <span className="font-medium">{formatBytes(image.converted_size)} ({image.converted_format?.toUpperCase()})</span>
+                      {image.converted_images.map((ci) => (
+                        <div key={ci.format} className="flex items-center justify-between gap-2">
+                          <span className="text-orange-600">Converted ({ci.format.toUpperCase()}):</span>
+                          <span className="font-medium">{ci.size != null ? formatBytes(ci.size) : 'Unknown'}</span>
                         </div>
-                      )}
+                      ))}
                     </div>
                   </TooltipContent>
                 </Tooltip>
@@ -389,7 +396,7 @@ const ImageGridItem = memo(function ImageGridItem({
         {(image.compressed_filepath ||
           upscaledVersions.length > 0 ||
           image.bg_removed_filepath ||
-          image.converted_filepath) && (
+          image.converted_images.length > 0) && (
           <>
             <ContextMenuSeparator />
             <ContextMenuLabel>Versions</ContextMenuLabel>
@@ -457,16 +464,38 @@ const ImageGridItem = memo(function ImageGridItem({
               </>
             )}
 
-            {image.converted_filepath && (
+            {image.converted_images.length > 0 && (
               <>
-                <ContextMenuItem onClick={handleOpenConverted}>
-                  <ExternalLink className="mr-2 h-4 w-4" />
-                  Open Converted ({image.converted_format?.toUpperCase()})
-                </ContextMenuItem>
-                <ContextMenuItem onClick={handleRevealConverted}>
-                  <FolderSearch className="mr-2 h-4 w-4" />
-                  Reveal Converted
-                </ContextMenuItem>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>
+                    <ExternalLink className="mr-2 h-4 w-4" /> Open Converted
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    {image.converted_images.map((ci) => (
+                      <ContextMenuItem
+                        key={ci.format}
+                        onClick={() => handleOpenConverted(ci.filepath)}
+                      >
+                        {ci.format.toUpperCase()} {ci.size != null ? `(${formatBytes(ci.size)})` : ''}
+                      </ContextMenuItem>
+                    ))}
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>
+                    <FolderSearch className="mr-2 h-4 w-4" /> Reveal Converted
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent>
+                    {image.converted_images.map((ci) => (
+                      <ContextMenuItem
+                        key={ci.format}
+                        onClick={() => handleRevealConverted(ci.filepath)}
+                      >
+                        {ci.format.toUpperCase()}
+                      </ContextMenuItem>
+                    ))}
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
               </>
             )}
           </>

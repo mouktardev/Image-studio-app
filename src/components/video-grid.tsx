@@ -8,6 +8,9 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Progress } from '@/components/ui/progress'
@@ -156,17 +159,17 @@ const VideoGridItem = memo(function VideoGridItem({
                     <Minimize2 className="h-2.5 w-2.5" />
                   </span>
                 )}
-                {video.converted_filepath && (
+                {video.converted_videos.length > 0 && (
                   <span
                     className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-orange-500 text-white"
-                    title="Converted"
+                    title={`Converted (${video.converted_videos.length})`}
                   >
                     <Repeat2 className="h-2.5 w-2.5" />
                   </span>
                 )}
               </div>
 
-              {(video.compressed_filepath || video.bg_removed_filepath || video.converted_filepath) && (
+              {(video.compressed_filepath || video.bg_removed_filepath || video.converted_videos.length > 0) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
@@ -187,12 +190,12 @@ const VideoGridItem = memo(function VideoGridItem({
                           <span className="font-medium">{formatBytes(video.bg_removed_size)}</span>
                         </div>
                       )}
-                      {video.converted_size && (
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-orange-600">Converted:</span>
-                          <span className="font-medium">{formatBytes(video.converted_size)} ({video.converted_format?.toUpperCase()})</span>
+                      {video.converted_videos.map((cv) => (
+                        <div key={cv.format} className="flex items-center justify-between gap-2">
+                          <span className="text-orange-600">Converted ({cv.format.toUpperCase()}):</span>
+                          <span className="font-medium">{cv.size != null ? formatBytes(cv.size) : 'Unknown'}</span>
                         </div>
-                      )}
+                      ))}
                     </div>
                   </TooltipContent>
                 </Tooltip>
@@ -306,23 +309,43 @@ const VideoGridItem = memo(function VideoGridItem({
             </ContextMenuItem>
           </>
         )}
-        {video.converted_filepath && (
+        {video.converted_videos.length > 0 && (
           <>
             <ContextMenuSeparator />
-            <ContextMenuItem
-              onClick={() =>
-                openFile(video.converted_filepath!).catch((e) => logError(`Failed: ${e}`))
-              }
-            >
-              <ExternalLink className="mr-2 h-4 w-4" /> Open Converted ({video.converted_format?.toUpperCase()})
-            </ContextMenuItem>
-            <ContextMenuItem
-              onClick={() =>
-                revealInExplorer(video.converted_filepath!).catch((e) => logError(`Failed: ${e}`))
-              }
-            >
-              <FolderSearch className="mr-2 h-4 w-4" /> Reveal Converted
-            </ContextMenuItem>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <Repeat2 className="mr-2 h-4 w-4" /> Open Converted
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                {video.converted_videos.map((cv) => (
+                  <ContextMenuItem
+                    key={cv.format}
+                    onClick={() =>
+                      openFile(cv.filepath).catch((e) => logError(`Failed: ${e}`))
+                    }
+                  >
+                    <ExternalLink className="mr-2 h-4 w-4" /> {cv.format.toUpperCase()} ({cv.size != null ? formatBytes(cv.size) : 'Unknown'})
+                  </ContextMenuItem>
+                ))}
+              </ContextMenuSubContent>
+            </ContextMenuSub>
+            <ContextMenuSub>
+              <ContextMenuSubTrigger>
+                <FolderSearch className="mr-2 h-4 w-4" /> Reveal Converted
+              </ContextMenuSubTrigger>
+              <ContextMenuSubContent>
+                {video.converted_videos.map((cv) => (
+                  <ContextMenuItem
+                    key={cv.format}
+                    onClick={() =>
+                      revealInExplorer(cv.filepath).catch((e) => logError(`Failed: ${e}`))
+                    }
+                  >
+                    <FolderSearch className="mr-2 h-4 w-4" /> {cv.format.toUpperCase()}
+                  </ContextMenuItem>
+                ))}
+              </ContextMenuSubContent>
+            </ContextMenuSub>
           </>
         )}
         <ContextMenuSeparator />

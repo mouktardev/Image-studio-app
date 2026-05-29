@@ -92,6 +92,13 @@ pub fn run() {
                 return Ok(());
             }
 
+            // Ensure ffmpeg cache dir exists and register in OnceLock
+            if let Ok(app_data) = app.path().app_data_dir() {
+                let ffmpeg_dir = app_data.join("ffmpeg");
+                let _ = std::fs::create_dir_all(&ffmpeg_dir);
+                let _ = crate::crud::video_processing::FFMPEG_DIR.set(ffmpeg_dir);
+            }
+
             #[cfg(desktop)]
             let _ = app.handle().plugin(tauri_plugin_updater::Builder::new().build());
 

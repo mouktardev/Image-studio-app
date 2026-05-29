@@ -1,6 +1,6 @@
 [package]
 name = "Image-Studio"
-version = "0.1.9"
+version = "0.2.0"
 description = "an open source desktop application for for image optimization with ai tools focus on privacy for local devices"
 authors = ["Mouktar"]
 edition = "2021"
@@ -40,8 +40,10 @@ futures = "0.3.32"
 num_cpus = "1.17.0"
 ort = { git = "https://github.com/pykeio/ort", tag = "v1.16.3" }
 ndarray = "0.15"
-hf-hub = "0.3"
-dirs = "5"
+reqwest = { version = "0.12", features = ["blocking", "stream"] }
+sha2 = "0.10"
+futures-util = "0.3"
+
 ffmpeg-sidecar = { version = "2.5", features = ["download_ffmpeg"] }
 tempfile = "3"
 

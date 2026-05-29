@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager, State};
 use anyhow::{Context, Result};
@@ -18,6 +19,8 @@ use ffmpeg_sidecar::paths;
 use super::background_removal::{apply_bg_removal, create_onnx_session, check_model_downloaded};
 
 const SUPPORTED_VIDEO_EXTENSIONS: &[&str] = &["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "m4v", "3gp"];
+
+pub(crate) static FFMPEG_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 pub struct CancelTokens(pub std::sync::Mutex<HashMap<i64, Arc<AtomicBool>>>);
 
@@ -60,9 +63,15 @@ pub struct Video {
     pub bg_removed_model: Option<String>,
     pub compressed_filepath: Option<String>,
     pub compressed_size: Option<i64>,
-    pub converted_filepath: Option<String>,
-    pub converted_size: Option<i64>,
-    pub converted_format: Option<String>,
+    #[serde(default)]
+    pub converted_videos: Vec<ConvertedVideo>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct ConvertedVideo {
+    pub filepath: String,
+    pub size: Option<i64>,
+    pub format: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -74,6 +83,13 @@ pub struct FfmpegStatus {
 }
 
 fn find_ffmpeg() -> (PathBuf, String) {
+    if let Some(dir) = FFMPEG_DIR.get() {
+        let our = dir.join("ffmpeg.exe");
+        if our.exists() {
+            return (our, "sidecar".to_string());
+        }
+    }
+
     let sidecar = paths::ffmpeg_path();
 
     if sidecar.exists() {
@@ -108,6 +124,13 @@ fn find_ffmpeg() -> (PathBuf, String) {
 }
 
 fn find_ffprobe() -> (PathBuf, String) {
+    if let Some(dir) = FFMPEG_DIR.get() {
+        let our = dir.join("ffprobe.exe");
+        if our.exists() {
+            return (our, "sidecar".to_string());
+        }
+    }
+
     let sidecar = ffprobe::ffprobe_path();
 
     if sidecar.exists() {
@@ -171,18 +194,9 @@ struct ProbeOutput {
     format: Option<ProbeFormat>,
 }
 
-const FFMPEG_CACHE_KEY: &str = "ffmpeg_status_cache";
 
 #[tauri::command]
-pub async fn check_ffmpeg_status(state: State<'_, DbState>) -> Result<FfmpegStatus, String> {
-    let pool = state.0.clone();
-    
-    if let Ok(Some(cached)) = crate::db::get_setting(&pool, FFMPEG_CACHE_KEY).await {
-        if let Ok(status) = serde_json::from_str::<FfmpegStatus>(&cached) {
-            return Ok(status);
-        }
-    }
-
+pub async fn check_ffmpeg_status() -> Result<FfmpegStatus, String> {
     let (ffmpeg_path, ffmpeg_source) = find_ffmpeg();
     let (ffprobe_path, ffprobe_source) = find_ffprobe();
 
@@ -218,15 +232,21 @@ pub async fn check_ffmpeg_status(state: State<'_, DbState>) -> Result<FfmpegStat
         }
     };
 
-    if let Ok(cache_json) = serde_json::to_string(&status) {
-        let _ = crate::db::set_setting(&pool, FFMPEG_CACHE_KEY, &cache_json).await;
-    }
-
     Ok(status)
 }
 
 #[tauri::command]
-pub async fn download_ffmpeg(app: AppHandle, state: State<'_, DbState>) -> Result<String, String> {
+pub async fn download_ffmpeg(app: AppHandle) -> Result<String, String> {
+    let ffmpeg_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?
+        .join("ffmpeg");
+    std::fs::create_dir_all(&ffmpeg_dir)
+        .map_err(|e| format!("Failed to create ffmpeg dir: {}", e))?;
+    let _ = FFMPEG_DIR.set(ffmpeg_dir.clone());
+    log::info!("Downloading FFmpeg to: {:?}", ffmpeg_dir);
+
     let _ = app.emit("ffmpeg-download-progress", VideoBgRemovalProgress {
         id: 0,
         progress: 0,
@@ -235,8 +255,13 @@ pub async fn download_ffmpeg(app: AppHandle, state: State<'_, DbState>) -> Resul
     });
 
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
-        ffmpeg_sidecar::download::auto_download()
-            .map_err(|e| format!("Failed to download FFmpeg: {}", e))
+        let url = ffmpeg_sidecar::download::ffmpeg_download_url()
+            .map_err(|e| format!("Failed to get FFmpeg download URL: {}", e))?;
+        let archive = ffmpeg_sidecar::download::download_ffmpeg_package(url, &ffmpeg_dir)
+            .map_err(|e| format!("Failed to download FFmpeg: {}", e))?;
+        ffmpeg_sidecar::download::unpack_ffmpeg(&archive, &ffmpeg_dir)
+            .map_err(|e| format!("Failed to unpack FFmpeg: {}", e))?;
+        Ok(())
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))??;
@@ -247,9 +272,6 @@ pub async fn download_ffmpeg(app: AppHandle, state: State<'_, DbState>) -> Resul
         message: "Download complete".to_string(),
         eta_seconds: None,
     });
-
-    let pool = state.0.clone();
-    let _ = crate::db::set_setting(&pool, FFMPEG_CACHE_KEY, "").await;
 
     let (path, _) = find_ffmpeg();
     Ok(path.to_string_lossy().to_string())
@@ -971,9 +993,9 @@ pub async fn get_all_videos(
     .await
     .map_err(|e| e.to_string())?;
 
-    let mut conv_map: std::collections::HashMap<i64, (String, Option<i64>, String)> = std::collections::HashMap::new();
+    let mut conv_map: std::collections::HashMap<i64, Vec<ConvertedVideo>> = std::collections::HashMap::new();
     for (orig_id, fp, sz, fmt) in conv_rows {
-        conv_map.insert(orig_id, (fp, sz, fmt));
+        conv_map.entry(orig_id).or_default().push(ConvertedVideo { filepath: fp, size: sz, format: fmt });
     }
 
     let videos: Vec<Video> = rows.into_iter().map(|(id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path)| {
@@ -985,15 +1007,12 @@ pub async fn get_all_videos(
             Some((fp, sz)) => (Some(fp.clone()), *sz),
             None => (None, None),
         };
-        let (converted_filepath, converted_size, converted_format) = match conv_map.get(&id) {
-            Some((fp, sz, fmt)) => (Some(fp.clone()), *sz, Some(fmt.clone())),
-            None => (None, None, None),
-        };
+        let converted_videos = conv_map.remove(&id).unwrap_or_default();
         Video {
             id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path,
             bg_removed_filepath, bg_removed_size, bg_removed_model,
             compressed_filepath, compressed_size,
-            converted_filepath, converted_size, converted_format,
+            converted_videos,
         }
     }).collect();
 
@@ -1116,9 +1135,7 @@ pub async fn get_all_bg_removed_videos(state: State<'_, DbState>) -> Result<Vec<
             bg_removed_model: Some(row.3),
             compressed_filepath: None,
             compressed_size: None,
-            converted_filepath: None,
-            converted_size: None,
-            converted_format: None,
+            converted_videos: vec![],
         }
     }).collect();
 
@@ -1159,9 +1176,7 @@ pub async fn get_all_compressed_videos(state: State<'_, DbState>) -> Result<Vec<
             bg_removed_model: None,
             compressed_filepath: Some(row.2),
             compressed_size: row.3,
-            converted_filepath: None,
-            converted_size: None,
-            converted_format: None,
+            converted_videos: vec![],
         }
     }).collect();
 
@@ -1172,40 +1187,42 @@ pub async fn get_all_compressed_videos(state: State<'_, DbState>) -> Result<Vec<
 pub async fn get_all_converted_videos(state: State<'_, DbState>) -> Result<Vec<Video>, String> {
     let pool = state.0.clone();
 
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<i64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>, Option<String>, Option<String>, Option<i64>, Option<String>)>(
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<f64>, Option<f64>, Option<String>)>(
         r#"
-        SELECT v.id, v.filename, cvi.filepath, cvi.size,
-               v.width, v.height, v.duration, v.fps, v.thumbnail_path,
-               cvi.filepath, cvi.size, cvi.format
+        SELECT v.id, v.filename, v.filepath, v.mimetype, v.size,
+               v.width, v.height, v.duration, v.fps, v.thumbnail_path
         FROM videos v
         INNER JOIN converted_videos cvi ON v.id = cvi.original_id
-        ORDER BY cvi.id DESC
+        GROUP BY v.id
+        ORDER BY MAX(cvi.id) DESC
         "#
     )
     .fetch_all(&pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    let result: Vec<Video> = rows.into_iter().map(|row| {
+    let conv_rows = sqlx::query_as::<_, (i64, String, Option<i64>, String)>(
+        "SELECT original_id, filepath, size, format FROM converted_videos ORDER BY id DESC"
+    )
+    .fetch_all(&pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut conv_map: std::collections::HashMap<i64, Vec<ConvertedVideo>> = std::collections::HashMap::new();
+    for (orig_id, fp, sz, fmt) in conv_rows {
+        conv_map.entry(orig_id).or_default().push(ConvertedVideo { filepath: fp, size: sz, format: fmt });
+    }
+
+    let result: Vec<Video> = rows.into_iter().map(|(id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path)| {
+        let converted_videos = conv_map.remove(&id).unwrap_or_default();
         Video {
-            id: row.0,
-            filename: row.1,
-            filepath: row.2.clone(),
-            mimetype: Some("video/mp4".to_string()),
-            size: row.3,
-            width: row.4,
-            height: row.5,
-            duration: row.6,
-            fps: row.7,
-            thumbnail_path: row.8,
+            id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path,
             bg_removed_filepath: None,
             bg_removed_size: None,
             bg_removed_model: None,
             compressed_filepath: None,
             compressed_size: None,
-            converted_filepath: row.9,
-            converted_size: row.10,
-            converted_format: row.11,
+            converted_videos,
         }
     }).collect();
 
@@ -1365,7 +1382,7 @@ pub async fn remove_video_bg(
 ) -> Result<VideoBgRemovalResult, String> {
     let pool = state.0.clone();
 
-    let (model_path, _model_size) = check_model_downloaded()?;
+    let (model_path, _model_size) = check_model_downloaded(&app)?;
 
     let ffmpeg_path = get_ffmpeg_path();
     if !ffmpeg_path.exists() {

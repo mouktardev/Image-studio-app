@@ -9,6 +9,13 @@ use crate::DbState;
 const SUPPORTED_IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "tiff", "tif", "avif"];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ConvertedImage {
+    pub filepath: String,
+    pub size: Option<i64>,
+    pub format: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Image {
     pub id: i64,
     pub filename: String,
@@ -26,11 +33,7 @@ pub struct Image {
     #[serde(default)]
     pub bg_removed_size: Option<i64>,
     #[serde(default)]
-    pub converted_filepath: Option<String>,
-    #[serde(default)]
-    pub converted_size: Option<i64>,
-    #[serde(default)]
-    pub converted_format: Option<String>,
+    pub converted_images: Vec<ConvertedImage>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -72,12 +75,11 @@ pub async fn get_all_images(
 ) -> Result<Vec<Image>, String> {
     let pool = &state.0;
     
-    // Build the ORDER BY clause based on sort parameters
     let order_clause = if let Some(ref p) = params {
         let sort_field = match p.sort_field.as_str() {
             "name" => "i.filename",
             "size" => "i.size",
-            _ => "i.id", // date default
+            _ => "i.id",
         };
         let sort_order = if p.sort_order == "asc" { "ASC" } else { "DESC" };
         format!("ORDER BY {} {}", sort_field, sort_order)
@@ -85,7 +87,6 @@ pub async fn get_all_images(
         "ORDER BY i.id DESC".to_string()
     };
     
-    // Build search clause if search query provided
     let search_clause = if let Some(ref p) = params {
         if let Some(ref search) = p.search {
             if !search.is_empty() {
@@ -112,13 +113,11 @@ pub async fn get_all_images(
                     'model', u.model_used
                 )
             ), '[]') as upscaled_versions,
-            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size,
-            cvi.filepath as converted_filepath, cvi.size as converted_size, cvi.format as converted_format
+            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size
          FROM images i
          LEFT JOIN compressed_images ci ON ci.original_id = i.id
          LEFT JOIN upscaled_images u ON u.original_id = i.id
          LEFT JOIN bg_removed_images bi ON bi.original_id = i.id
-         LEFT JOIN converted_images cvi ON cvi.original_id = i.id
          {}
          GROUP BY i.id
          {}",
@@ -126,23 +125,34 @@ pub async fn get_all_images(
         order_clause
     );
     
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>, Option<String>, Option<i64>, Option<String>)>(&query)
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(&query)
         .fetch_all(pool)
         .await
         .map_err(|e| e.to_string())?;
 
+    let conv_rows = sqlx::query_as::<_, (i64, String, Option<i64>, String)>(
+        "SELECT original_id, filepath, size, format FROM converted_images ORDER BY id DESC"
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut conv_map: std::collections::HashMap<i64, Vec<ConvertedImage>> = std::collections::HashMap::new();
+    for (orig_id, fp, sz, fmt) in conv_rows {
+        conv_map.entry(orig_id).or_default().push(ConvertedImage { filepath: fp, size: sz, format: fmt });
+    }
+
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size, converted_filepath, converted_size, converted_format)| {
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size)| {
+            let converted_images = conv_map.remove(&id).unwrap_or_default();
             Image { 
                 id, filename, filepath, mimetype, size, width, height, 
                 compressed_filepath, compressed_size,
                 upscaled_versions,
                 bg_removed_filepath,
                 bg_removed_size,
-                converted_filepath,
-                converted_size,
-                converted_format,
+                converted_images,
             }
         })
         .collect();
@@ -152,7 +162,9 @@ pub async fn get_all_images(
 
 #[tauri::command]
 pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>, Option<String>, Option<i64>, Option<String>)>(
+    let pool = &state.0;
+
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(
         "SELECT 
             i.id, i.filename, ci.filepath, i.mimetype, ci.size, i.width, i.height,
             ci.filepath as compressed_filepath, ci.size as compressed_size,
@@ -164,32 +176,41 @@ pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<
                     'model', u.model_used
                 )
             ), '[]') as upscaled_versions,
-            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size,
-            cvi.filepath as converted_filepath, cvi.size as converted_size, cvi.format as converted_format
+            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size
          FROM images i
          INNER JOIN compressed_images ci ON ci.original_id = i.id
          LEFT JOIN upscaled_images u ON u.original_id = i.id
          LEFT JOIN bg_removed_images bi ON bi.original_id = i.id
-         LEFT JOIN converted_images cvi ON cvi.original_id = i.id
          GROUP BY i.id, ci.id
          ORDER BY ci.id DESC"
     )
-    .fetch_all(&state.0)
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
+    let conv_rows = sqlx::query_as::<_, (i64, String, Option<i64>, String)>(
+        "SELECT original_id, filepath, size, format FROM converted_images ORDER BY id DESC"
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut conv_map: std::collections::HashMap<i64, Vec<ConvertedImage>> = std::collections::HashMap::new();
+    for (orig_id, fp, sz, fmt) in conv_rows {
+        conv_map.entry(orig_id).or_default().push(ConvertedImage { filepath: fp, size: sz, format: fmt });
+    }
+
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size, converted_filepath, converted_size, converted_format)| {
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size)| {
+            let converted_images = conv_map.remove(&id).unwrap_or_default();
             Image { 
                 id, filename, filepath, mimetype, size, width, height, 
                 compressed_filepath, compressed_size,
                 upscaled_versions,
                 bg_removed_filepath,
                 bg_removed_size,
-                converted_filepath,
-                converted_size,
-                converted_format,
+                converted_images,
             }
         })
         .collect();
@@ -199,9 +220,11 @@ pub async fn get_all_compressed_images(state: State<'_, DbState>) -> Result<Vec<
 
 #[tauri::command]
 pub async fn get_all_converted_images(state: State<'_, DbState>) -> Result<Vec<Image>, String> {
-    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>, Option<String>, Option<i64>, Option<String>)>(
+    let pool = &state.0;
+
+    let rows = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(
         "SELECT 
-            i.id, i.filename, cvi.filepath, i.mimetype, cvi.size, i.width, i.height,
+            i.id, i.filename, i.filepath, i.mimetype, i.size, i.width, i.height,
             ci.filepath as compressed_filepath, ci.size as compressed_size,
             COALESCE(json_group_array(
                 json_object(
@@ -211,32 +234,42 @@ pub async fn get_all_converted_images(state: State<'_, DbState>) -> Result<Vec<I
                     'model', u.model_used
                 )
             ), '[]') as upscaled_versions,
-            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size,
-            cvi.filepath as converted_filepath, cvi.size as converted_size, cvi.format as converted_format
+            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size
          FROM images i
          INNER JOIN converted_images cvi ON cvi.original_id = i.id
          LEFT JOIN compressed_images ci ON ci.original_id = i.id
          LEFT JOIN upscaled_images u ON u.original_id = i.id
          LEFT JOIN bg_removed_images bi ON bi.original_id = i.id
-         GROUP BY i.id, cvi.id
-         ORDER BY cvi.id DESC"
+         GROUP BY i.id
+         ORDER BY MAX(cvi.id) DESC"
     )
-    .fetch_all(&state.0)
+    .fetch_all(pool)
     .await
     .map_err(|e| e.to_string())?;
 
+    let conv_rows = sqlx::query_as::<_, (i64, String, Option<i64>, String)>(
+        "SELECT original_id, filepath, size, format FROM converted_images ORDER BY id DESC"
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let mut conv_map: std::collections::HashMap<i64, Vec<ConvertedImage>> = std::collections::HashMap::new();
+    for (orig_id, fp, sz, fmt) in conv_rows {
+        conv_map.entry(orig_id).or_default().push(ConvertedImage { filepath: fp, size: sz, format: fmt });
+    }
+
     let images: Vec<Image> = rows
         .into_iter()
-        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size, converted_filepath, converted_size, converted_format)| {
+        .map(|(id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size)| {
+            let converted_images = conv_map.remove(&id).unwrap_or_default();
             Image { 
                 id, filename, filepath, mimetype, size, width, height, 
                 compressed_filepath, compressed_size,
                 upscaled_versions,
                 bg_removed_filepath,
                 bg_removed_size,
-                converted_filepath,
-                converted_size,
-                converted_format,
+                converted_images,
             }
         })
         .collect();
@@ -282,9 +315,7 @@ pub async fn add_image(data: AddImageData, state: State<'_, DbState>) -> Result<
         upscaled_versions: "[]".to_string(),
         bg_removed_filepath: None,
         bg_removed_size: None,
-        converted_filepath: None,
-        converted_size: None,
-        converted_format: None,
+        converted_images: vec![],
     })
 }
 

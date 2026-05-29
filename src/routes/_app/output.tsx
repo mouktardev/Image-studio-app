@@ -434,28 +434,30 @@ function OutputPage() {
       }))
 
     const convertedImagesList: OutputImage[] = loaderData.convertedImages
-      .filter((img) => img.converted_filepath)
-      .map((img) => ({
-        id: img.id,
-        filename: img.filename,
-        filepath: img.converted_filepath!,
-        resultType: 'converted_images' as const,
-        displayFilepath: img.converted_filepath!,
-        displaySize: img.converted_size ?? null,
-      }))
+      .flatMap((img) =>
+        img.converted_images.map((ci) => ({
+          id: img.id,
+          filename: `${img.filename} (${ci.format.toUpperCase()})`,
+          filepath: ci.filepath,
+          resultType: 'converted_images' as const,
+          displayFilepath: ci.filepath,
+          displaySize: ci.size ?? null,
+        }))
+      )
 
     const convertedVideosList: OutputImage[] = loaderData.convertedVideos
-      .filter((video) => video.converted_filepath)
-      .map((video) => ({
-        id: video.id,
-        filename: video.filename,
-        filepath: video.converted_filepath!,
-        resultType: 'converted_videos' as const,
-        displayFilepath: video.converted_filepath!,
-        displaySize: video.converted_size ?? null,
-        isVideo: true,
-        thumbnailPath: video.thumbnail_path,
-      }))
+      .flatMap((video) =>
+        video.converted_videos.map((cv) => ({
+          id: video.id,
+          filename: `${video.filename} (${cv.format.toUpperCase()})`,
+          filepath: cv.filepath,
+          resultType: 'converted_videos' as const,
+          displayFilepath: cv.filepath,
+          displaySize: cv.size ?? null,
+          isVideo: true,
+          thumbnailPath: video.thumbnail_path,
+        }))
+      )
 
     let allImages: OutputImage[]
     if (outputType === 'all') {
@@ -651,7 +653,7 @@ function OutputPage() {
           <div className="grid grid-cols-2 gap-4 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
             {images.map((image) => (
               <OutputGridItem
-                key={`${image.id}-${image.resultType}-${image.upscaled_scale ?? '0'}`}
+                key={`${image.id}-${image.resultType}-${image.displayFilepath}`}
                 image={image}
               />
             ))}

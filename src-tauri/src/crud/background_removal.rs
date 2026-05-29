@@ -6,14 +6,12 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 use crate::DbState;
+use crate::crud::models;
 use futures::{stream, StreamExt};
-use hf_hub::api::sync::Api;
 use ort::{Environment, SessionBuilder, Value};
 use ndarray::{Array, Axis};
 
 const MODEL_NAME: &str = "bria-rmbg-1.4";
-const HF_REPO: &str = "briaai/RMBG-1.4";
-const MODEL_FILENAME: &str = "onnx/model.onnx";
 
 #[derive(Clone, Serialize)]
 pub struct BgRemovalProgress {
@@ -30,99 +28,20 @@ pub struct BgRemovalModelStatus {
     pub size: Option<i64>,
 }
 
-fn get_hf_cache_dir() -> Result<PathBuf> {
-    let home = dirs::home_dir().context("Failed to get home directory")?;
-    let cache_dir = home
-        .join(".cache")
-        .join("huggingface")
-        .join("hub");
-    Ok(cache_dir)
-}
-
-pub fn check_model_downloaded() -> Result<(PathBuf, i64), String> {
-    let cache_dir = get_hf_cache_dir().map_err(|e| e.to_string())?;
-    
-    let filename = MODEL_FILENAME.split('/').last().unwrap_or(MODEL_FILENAME);
-    let repo_id_safe = HF_REPO.replace('/', "--");
-    
-    let snapshots_dir = cache_dir.join(format!("models--{}", repo_id_safe)).join("snapshots");
-    
-    if snapshots_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&snapshots_dir) {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
-                if entry_path.is_dir() {
-                    // Try direct file
-                    let direct_file = entry_path.join(filename);
-                    if direct_file.exists() {
-                        let size = fs::metadata(&direct_file).map(|m| m.len() as i64).unwrap_or(0);
-                        return Ok((direct_file, size));
-                    }
-                    
-                    // Try with subfolder
-                    let subfolder_path = entry_path.join(MODEL_FILENAME);
-                    if subfolder_path.exists() {
-                        let size = fs::metadata(&subfolder_path).map(|m| m.len() as i64).unwrap_or(0);
-                        return Ok((subfolder_path, size));
-                    }
-                }
-            }
-        }
-    }
-    
-    Err(format!("Model {} not found in cache", MODEL_NAME))
+pub fn check_model_downloaded(app: &AppHandle) -> Result<(PathBuf, i64), String> {
+    models::check_downloaded(app, MODEL_NAME)
 }
 
 
 
 #[tauri::command]
-pub async fn get_bg_removal_model_status() -> Result<BgRemovalModelStatus, String> {
-    let cache_dir = get_hf_cache_dir().map_err(|e| e.to_string())?;
-    
-    let filename = MODEL_FILENAME.split('/').last().unwrap_or(MODEL_FILENAME);
-    let repo_id_safe = HF_REPO.replace('/', "--");
-    
-    let model_dir = cache_dir.join(format!("models--{}", repo_id_safe));
-    let snapshots_dir = model_dir.join("snapshots");
-    
-    let mut found_path: Option<PathBuf> = None;
-    
-    if snapshots_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&snapshots_dir) {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
-                if entry_path.is_dir() {
-                    let direct_file = entry_path.join(filename);
-                    if direct_file.exists() {
-                        found_path = Some(direct_file);
-                        break;
-                    }
-                    
-                    let subfolder_path = entry_path.join(MODEL_FILENAME);
-                    if subfolder_path.exists() {
-                        found_path = Some(subfolder_path);
-                        break;
-                    }
-                }
-            }
-        }
-    }
-    
-    let model_path = found_path
-        .as_ref()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    let model_size = found_path
-        .as_ref()
-        .and_then(|p| fs::metadata(p).ok())
-        .map(|m| m.len() as i64);
-    
+pub async fn get_bg_removal_model_status(app: AppHandle) -> Result<BgRemovalModelStatus, String> {
+    let status = models::get_status(&app, MODEL_NAME.to_string());
     Ok(BgRemovalModelStatus {
-        name: MODEL_NAME.to_string(),
-        downloaded: found_path.is_some(),
-        path: model_path,
-        size: model_size,
+        name: status.name,
+        downloaded: status.downloaded,
+        path: status.path,
+        size: status.size,
     })
 }
 
@@ -142,11 +61,9 @@ pub async fn download_bg_removal_model(
         message: "Downloading BRIA RMBG-1.4 model...".to_string(),
     });
 
+    let app_clone = app.clone();
     let model_path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
-        let api = Api::new().map_err(|e| format!("Failed to initialize HF Api: {}", e))?;
-        let repo = api.model(HF_REPO.to_string());
-        let path = repo.get(MODEL_FILENAME).map_err(|e| format!("Failed to download model: {}", e))?;
-        Ok(path)
+        models::download_model_blocking(&app_clone, MODEL_NAME, "bg-removal-model-download-progress")
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))??;
@@ -260,7 +177,7 @@ pub async fn remove_background_by_ids(
     let pool = state.0.clone();
     
     // Check if model is downloaded
-    let (model_path, _model_size) = check_model_downloaded()?;
+    let (model_path, _model_size) = check_model_downloaded(&app)?;
     
     let output_dir_setting: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'output'")
         .fetch_optional(&pool)
@@ -430,9 +347,7 @@ pub async fn get_all_bg_removed_images(
             upscaled_versions: "[]".to_string(),
             bg_removed_filepath: Some(row.2),
             bg_removed_size: Some(row.4),
-            converted_filepath: None,
-            converted_size: None,
-            converted_format: None,
+            converted_images: vec![],
         }
     }).collect();
 

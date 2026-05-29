@@ -33,6 +33,13 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
 
+      - name: Get commit message for release body
+        run: |
+          $msg = git log --format=%B -1 ${{ github.ref }}
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_BODY<<EOF"
+          Add-Content -Path $env:GITHUB_ENV -Value $msg
+          Add-Content -Path $env:GITHUB_ENV -Value "EOF"
+
       - name: Build and release Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
@@ -42,40 +49,6 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: 'Version __VERSION__'
-          releaseBody: |
-            ## 🚀 Features
-            - Video compression functionality with quality presets
-            - Video import and management
-            - Image filtering and sorting
-            - AI-powered background removal for images
-            - Image upscaling with AI models (Swin2SR)
-            - Image compression with quality control
-
-            ## 🐛 Fixes
-            - Downgraded tauri-action version for compatibility
-            - Various UI/UX fixes
-
-            ## 🔧 Improvements
-            - Updated versioning automation
-            - Enhanced UI components
-            - Added output gallery for processed images
-            - Improved logging functionality
-            - Added updater and process plugins
-
-            ## 📦 What's Changed
-            - v0.1.6: Video compression, drag & drop support, format validation
-            - v0.1.5: Video functionality
-            - v0.1.4: Added dialogs for compress, upscale, and background removal
-            - v0.1.3: Image filtering and sorting
-            - v0.1.2: AI background removal, upscaling
-            - v0.1.1: Version bumping, upscaling, UI enhancements
-            - v0.1.0: Initial stable release
-
-            ## ⚠️ Windows Only
-            This release only includes Windows installers (NSIS & MSI).
-            macOS and Linux builds coming soon.
-
-            ## 📥 Downloads
-            Installers are available in the Assets section below.
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: true
           prerelease: false

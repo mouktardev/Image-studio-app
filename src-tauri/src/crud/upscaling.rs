@@ -5,19 +5,8 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use image::GenericImageView;
 use crate::DbState;
+use crate::crud::models;
 use futures::{stream, StreamExt};
-use hf_hub::api::sync::Api;
-
-const MODEL_CONFIG: &[(&str, &str, &str)] = &[
-    ("realesrgan-x2", "Xenova/swin2SR-classical-sr-x2-64", "onnx/model.onnx"),
-    ("realesrgan-x4", "onnx-community/swin2SR-realworld-sr-x4-64-bsrgan-psnr-ONNX", "onnx/model.onnx"),
-];
-
-fn get_model_config(model_name: &str) -> Option<(&str, &str)> {
-    MODEL_CONFIG.iter()
-        .find(|(name, _, _)| *name == model_name)
-        .map(|(_, repo, file)| (*repo, *file))
-}
 
 #[derive(Clone, Serialize)]
 pub struct UpscaleProgress {
@@ -40,61 +29,13 @@ pub struct UpscaleSettings {
     pub cache_dir: String,
 }
 
-fn get_model_info(model_name: &str) -> Option<(&str, &str)> {
-    get_model_config(model_name)
-}
-
-fn check_model_downloaded(model_name: &str) -> Result<(PathBuf, i64), String> {
-    let cache_dir = get_hf_cache_dir().map_err(|e| e.to_string())?;
-    
-    let (hf_repo, model_filename) = get_model_info(model_name)
-        .ok_or_else(|| "Unknown model".to_string())?;
-    
-    let filename = model_filename.split('/').last().unwrap_or(model_filename);
-    let repo_id_safe = hf_repo.replace('/', "--");
-    
-    let snapshots_dir = cache_dir.join(format!("models--{}", repo_id_safe)).join("snapshots");
-    
-    if snapshots_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&snapshots_dir) {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
-                if entry_path.is_dir() {
-                    // Try direct file
-                    let direct_file = entry_path.join(filename);
-                    if direct_file.exists() {
-                        let size = fs::metadata(&direct_file).map(|m| m.len() as i64).unwrap_or(0);
-                        return Ok((direct_file, size));
-                    }
-                    
-                    // Try with subfolder
-                    if model_filename.contains('/') {
-                        let subfolder_path = entry_path.join(model_filename);
-                        if subfolder_path.exists() {
-                            let size = fs::metadata(&subfolder_path).map(|m| m.len() as i64).unwrap_or(0);
-                            return Ok((subfolder_path, size));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    Err(format!("Model {} not found in cache", model_name))
-}
-
-fn get_hf_cache_dir() -> Result<PathBuf> {
-    // Use home directory to get the actual HF cache location (~/.cache/huggingface/hub)
-    let home = dirs::home_dir().context("Failed to get home directory")?;
-    let cache_dir = home
-        .join(".cache")
-        .join("huggingface")
-        .join("hub");
-    Ok(cache_dir)
+fn check_model_downloaded(app: &AppHandle, model_name: &str) -> Result<(PathBuf, i64), String> {
+    models::check_downloaded(app, model_name)
 }
 
 #[tauri::command]
 pub async fn get_upscale_settings(
+    app: AppHandle,
     state: State<'_, DbState>,
 ) -> Result<UpscaleSettings, String> {
     let pool = state.0.clone();
@@ -104,9 +45,9 @@ pub async fn get_upscale_settings(
         .await
         .unwrap_or(Some("realesrgan-x4".to_string()));
 
-    let cache_dir = get_hf_cache_dir()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let cache_dir = models::get_cache_dir(&app)
+        .to_string_lossy()
+        .to_string();
 
     Ok(UpscaleSettings {
         model: model.unwrap_or_else(|| "realesrgan-x4".to_string()),
@@ -132,65 +73,15 @@ pub async fn set_upscale_settings(
 
 #[tauri::command]
 pub async fn get_model_status(
+    app: AppHandle,
     model: String,
 ) -> Result<ModelStatus, String> {
-    let cache_dir = get_hf_cache_dir().map_err(|e| e.to_string())?;
-    
-    let (hf_repo, model_filename) = get_model_info(&model)
-        .ok_or_else(|| "Unknown model".to_string())?;
-    
-    // Extract just the filename (e.g., "model.onnx") from "onnx/model.onnx"
-    let filename = model_filename.split('/').last().unwrap_or(model_filename);
-    
-    let repo_id_safe = hf_repo.replace('/', "--");
-    
-    // Cache structure: models--{repo}--{revision}/snapshots/{commit_hash}/{filename}
-    // Or: models--{repo}/{snapshots/{commit_hash}/{filename}
-    let model_dir = cache_dir.join(format!("models--{}", repo_id_safe));
-    let snapshots_dir = model_dir.join("snapshots");
-    
-    let mut found_path: Option<PathBuf> = None;
-    
-    if snapshots_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&snapshots_dir) {
-            for entry in entries.flatten() {
-                let entry_path = entry.path();
-                if entry_path.is_dir() {
-                    // Try both: direct file and subfolder (e.g., onnx/model.onnx)
-                    let direct_file = entry_path.join(filename);
-                    if direct_file.exists() {
-                        found_path = Some(direct_file);
-                        break;
-                    }
-                    
-                    // Try with subfolder (for repos with onnx/ prefix)
-                    if model_filename.contains('/') {
-                        let subfolder_path = entry_path.join(model_filename);
-                        if subfolder_path.exists() {
-                            found_path = Some(subfolder_path);
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    let model_path = found_path
-        .as_ref()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
-
-    let model_size = found_path
-        .as_ref()
-        .and_then(|p| fs::metadata(p).ok())
-        .map(|m| m.len() as i64);
-    
+    let status = models::get_status(&app, model);
     Ok(ModelStatus {
-        name: model,
-        downloaded: found_path.is_some(),
-        path: model_path,
-        size: model_size,
+        name: status.name,
+        downloaded: status.downloaded,
+        path: status.path,
+        size: status.size,
     })
 }
 
@@ -205,21 +96,10 @@ pub async fn download_model(
         message: "Connecting to HuggingFace...".to_string(),
     });
 
-    let (hf_repo, model_filename) = get_model_info(&model)
-        .map(|(r, f)| (r.to_string(), f.to_string()))
-        .ok_or_else(|| "Unknown model".to_string())?;
-    
-    let _ = app.emit("model-download-progress", UpscaleProgress {
-        id: 0,
-        progress: 10,
-        message: "Downloading model...".to_string(),
-    });
-
+    let app_clone = app.clone();
+    let model_clone = model.clone();
     let model_path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
-        let api = Api::new().map_err(|e| format!("Failed to initialize HF Api: {}", e))?;
-        let repo = api.model(hf_repo);
-        let path = repo.get(&model_filename).map_err(|e| format!("Failed to download model: {}", e))?;
-        Ok(path)
+        models::download_model_blocking(&app_clone, &model_clone, "model-download-progress")
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))??;
@@ -318,7 +198,7 @@ pub async fn upscale_images_by_ids(
     let pool = state.0.clone();
     
     // Use internal helper function instead of Tauri command
-    let (model_path, _model_size) = check_model_downloaded(&model)?;
+    let (model_path, _model_size) = check_model_downloaded(&app, &model)?;
     
     let output_dir_setting: Option<String> = sqlx::query_scalar("SELECT value FROM settings WHERE key = 'output'")
         .fetch_optional(&pool)
@@ -492,9 +372,7 @@ pub async fn get_all_upscaled_images(
             upscaled_versions: upscaled_json,
             bg_removed_filepath: None,
             bg_removed_size: None,
-            converted_filepath: None,
-            converted_size: None,
-            converted_format: None,
+            converted_images: vec![],
         }
     }).collect();
 
