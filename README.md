@@ -11,6 +11,9 @@
 
 Open-source desktop application for image optimization with AI-powered tools. Built for privacy - all processing happens locally on your device.
 
+> [!WARNING]
+> ⚠️ This is an experimental build and still contains bugs, unfinished features, and possible instability.
+
 ## Release
 
 - Download latest release:
