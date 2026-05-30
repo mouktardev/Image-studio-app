@@ -2,10 +2,10 @@
   <br>
   <picture>
     <source srcset="public/app-icon.png">
-    <img alt="Image Studio">
+    <img alt="localstudio">
   </picture>
   <br>
-  Image Studio
+  localstudio
   <br>
 </h1>
 
@@ -17,15 +17,15 @@ Open-source desktop application for image optimization with AI-powered tools. Bu
 ## Release
 
 - Download latest release:
-  <a href="https://github.com/mouktardev/Image-studio-app/releases">
-  <img src="https://img.shields.io/github/v/release/mouktardev/Image-studio-app"
+  <a href="https://github.com/mouktardev/localstudio/releases">
+  <img src="https://img.shields.io/github/v/release/mouktardev/localstudio"
            alt="Current Version">
   </a>
-  <a href="https://github.com/mouktardev/Image-studio-app/releases">
+  <a href="https://github.com/mouktardev/localstudio/releases">
   <img src="https://img.shields.io/badge/Windows-0078D6"
            alt="Windows Support">
   </a>
-- Release notes: [https://github.com/mouktardev/Image-studio-app/releases](https://github.com/mouktardev/Image-studio-app/releases)
+- Release notes: [https://github.com/mouktardev/localstudio/releases](https://github.com/mouktardev/localstudio/releases)
 - Available now: Windows installers (`.exe`, `.msi`)
 - Coming soon: macOS and Linux versions.
 
@@ -63,8 +63,8 @@ Open-source desktop application for image optimization with AI-powered tools. Bu
 
 ```bash
 # Clone the repository
-git clone https://github.com/mouktardev/Image-studio-app.git
-cd Image-studio-app
+git clone https://github.com/mouktardev/localstudio.git
+cd localstudio
 
 # Install dependencies
 bun install
@@ -89,7 +89,7 @@ bun run tauri build
 
 ## Release
 
-- Latest release: [![GitHub release](https://img.shields.io/github/v/release/mouktardev/Image-studio-app?style=flat-square)](https://github.com/mouktardev/Image-studio-app/releases/latest)
+- Latest release: [![GitHub release](https://img.shields.io/github/v/release/mouktardev/localstudio?style=flat-square)](https://github.com/mouktardev/localstudio/releases/latest)
 
 ## Release Process for developers
 

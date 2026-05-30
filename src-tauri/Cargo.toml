@@ -1,5 +1,5 @@
 [package]
-name = "Image-Studio"
+name = "localstudio"
 version = "0.2.1"
 description = "an open source desktop application for for image optimization with ai tools focus on privacy for local devices"
 authors = ["Mouktar"]

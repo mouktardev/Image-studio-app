@@ -43,12 +43,12 @@ export function AppSidebar() {
           <SidebarMenuButton
             size="sm"
             asChild
-            tooltip={isCollapsed ? `Image Studio v${packageJson.version}` : undefined}
+            tooltip={isCollapsed ? `localstudio v${packageJson.version}` : undefined}
           >
             <div className="flex items-center gap-2 px-2 py-7">
               <img
                 src="/app-icon.png"
-                alt="Image Studio"
+                alt="localstudio"
                 className={cn(
                   isCollapsed ? 'size-6' : 'size-15',
                   'shrink-0 rounded-md object-cover'
