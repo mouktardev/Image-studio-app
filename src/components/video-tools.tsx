@@ -127,15 +127,16 @@ export function VideoTools({
                 <Trash2 className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Delete</TooltipContent>
+            <TooltipContent>Remove</TooltipContent>
           </Tooltip>
 
           <Dialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Delete selected videos?</DialogTitle>
+                <DialogTitle>Remove selected videos?</DialogTitle>
                 <DialogDescription>
-                  You are about to delete {selectedIds.length} video(s). This action cannot be
+                  You are about to remove {selectedIds.length} video(s) from the app and database.
+                  The original file on your device will not be affected. This action cannot be
                   undone.
                 </DialogDescription>
               </DialogHeader>
@@ -159,7 +160,7 @@ export function VideoTools({
                   Cancel
                 </Button>
                 <Button variant="destructive" onClick={handleDeleteConfirm}>
-                  Delete
+                  Remove
                 </Button>
               </DialogFooter>
             </DialogContent>

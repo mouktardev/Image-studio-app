@@ -135,16 +135,17 @@ export function ImageTools({
                 <Trash2 className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Delete</TooltipContent>
+            <TooltipContent>Remove</TooltipContent>
           </Tooltip>
 
           <Dialog open={openDeleteDialog} onOpenChange={setOpenDeleteDialog}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Delete selected images?</DialogTitle>
+                <DialogTitle>Remove selected images?</DialogTitle>
                 <DialogDescription>
-                  You are about to delete {selectedIds.length} image(s) from the database. This
-                  action cannot be undone.
+                  You are about to remove {selectedIds.length} image(s) from the app and database.
+                  The original file on your device will not be affected. This action cannot be
+                  undone.
                 </DialogDescription>
               </DialogHeader>
               {selectedIds.length > 0 && (
@@ -167,7 +168,7 @@ export function ImageTools({
                   Cancel
                 </Button>
                 <Button variant="destructive" onClick={handleDeleteConfirm}>
-                  Delete
+                  Remove
                 </Button>
               </DialogFooter>
             </DialogContent>

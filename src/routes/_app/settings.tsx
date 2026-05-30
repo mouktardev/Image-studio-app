@@ -46,7 +46,7 @@ import {
   Maximize2,
   Video,
 } from 'lucide-react'
-import { toast } from '@/lib/notifications'
+import { addNotification } from '@/lib/notifications'
 import { useTheme } from '@/components/theme-provider'
 import { formatBytes } from '@/lib/utils'
 
@@ -220,14 +220,19 @@ function SettingsPage() {
                       try {
                         const deletedCount = await syncDatabase()
                         if (deletedCount > 0) {
-                          toast(`Cleaned up ${deletedCount} orphaned records.`, 'success')
+                          await addNotification({
+                            message: `Cleaned up ${deletedCount} orphaned records.`,
+                            status: 'success',
+                          })
                         } else {
-                          toast('Database is perfectly in sync with filesystem.', 'info')
+                          await addNotification({
+                            message: 'Database is perfectly in sync with filesystem.',
+                            status: 'info',
+                          })
                         }
                         await router.invalidate()
                       } catch (err) {
                         logError(`Failed to sync database: ${err}`)
-                        toast('Failed to sync database', 'error')
                       }
                     }}
                   >
@@ -272,40 +277,6 @@ function SettingsPage() {
                 {isChangingFolder ? 'Changing...' : 'Change Folder'}
               </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        <Separator className="my-6" />
-
-        {/* Update Settings */}
-        <Card className="my-4">
-          <CardHeader>
-            <CardTitle>Updates</CardTitle>
-            <CardDescription>Configure application update behavior</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-3">
-              <Checkbox
-                id="update-checks"
-                checked={updateChecksEnabled}
-                onCheckedChange={(checked) => {
-                  const value = Boolean(checked)
-                  setUpdateChecksEnabled(value)
-                  setSetting('update_checks_enabled', value ? 'true' : 'false').catch((err) => {
-                    logError(`Failed to save update check setting: ${err}`)
-                  })
-                }}
-              />
-              <label
-                htmlFor="update-checks"
-                className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Enable automatic update checks
-              </label>
-            </div>
-            <p className="text-muted-foreground mt-2 text-sm">
-              When enabled, the app will periodically check for updates
-            </p>
           </CardContent>
         </Card>
 
@@ -437,10 +408,12 @@ function SettingsPage() {
                             await downloadModel(model)
                             const status = await getModelStatus(model)
                             setModelStatus(status)
-                            toast('Model downloaded successfully', 'success')
+                            await addNotification({
+                              message: 'Model downloaded successfully',
+                              status: 'success',
+                            })
                           } catch (err) {
                             logError(`Failed to download model: ${err}`)
-                            toast('Failed to download model', 'error')
                           } finally {
                             setIsDownloadingUpscale(false)
                           }
@@ -520,10 +493,12 @@ function SettingsPage() {
                             await downloadBgRemovalModel()
                             const status = await getBgRemovalModelStatus()
                             setBgRemovalModelStatus(status)
-                            toast('Model downloaded successfully', 'success')
+                            await addNotification({
+                              message: 'Model downloaded successfully',
+                              status: 'success',
+                            })
                           } catch (err) {
                             logError(`Failed to download model: ${err}`)
-                            toast('Failed to download model', 'error')
                           } finally {
                             setIsDownloadingBgRemoval(false)
                           }
@@ -597,10 +572,12 @@ function SettingsPage() {
                             await downloadFfmpeg()
                             const status = await checkFfmpegStatus()
                             setFfmpegStatus(status)
-                            toast('FFmpeg downloaded successfully', 'success')
+                            await addNotification({
+                              message: 'FFmpeg downloaded successfully',
+                              status: 'success',
+                            })
                           } catch (err) {
                             logError(`Failed to download FFmpeg: ${err}`)
-                            toast('Failed to download FFmpeg', 'error')
                           } finally {
                             setIsDownloadingFfmpeg(false)
                           }
@@ -614,6 +591,38 @@ function SettingsPage() {
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+        <Separator className="my-6" />
+        {/* Update Settings */}
+        <Card className="my-4">
+          <CardHeader>
+            <CardTitle>Updates</CardTitle>
+            <CardDescription>Configure application update behavior</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <Checkbox
+                id="update-checks"
+                checked={updateChecksEnabled}
+                onCheckedChange={(checked) => {
+                  const value = Boolean(checked)
+                  setUpdateChecksEnabled(value)
+                  setSetting('update_checks_enabled', value ? 'true' : 'false').catch((err) => {
+                    logError(`Failed to save update check setting: ${err}`)
+                  })
+                }}
+              />
+              <label
+                htmlFor="update-checks"
+                className="text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Enable automatic update checks
+              </label>
+            </div>
+            <p className="text-muted-foreground mt-2 text-sm">
+              When enabled, the app will periodically check for updates
+            </p>
           </CardContent>
         </Card>
       </div>

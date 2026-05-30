@@ -20,7 +20,6 @@ import {
 } from '@/lib/tauri'
 import {
   addNotification,
-  toast,
   getSelections,
   setSelections,
   removeSelection,
@@ -29,7 +28,12 @@ import {
 import { error as logError } from '@/lib/logger'
 import { ImageTools } from '@/components/image-tools'
 import { useSetValueCallback } from '@/schema/tinybase-schema'
-import { CompressDialog, UpscaleDialog, BgRemovalDialog, ConvertFormatDialog } from '@/components/dialogs'
+import {
+  CompressDialog,
+  UpscaleDialog,
+  BgRemovalDialog,
+  ConvertFormatDialog,
+} from '@/components/dialogs'
 
 export const Route = createFileRoute('/_app/')({
   beforeLoad: async () => {
@@ -89,7 +93,9 @@ function IndexPage() {
   const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
 
   // Dialog state
-  const [activeDialog, setActiveDialog] = useState<null | 'compress' | 'upscale' | 'bgremove' | 'convert'>(null)
+  const [activeDialog, setActiveDialog] = useState<
+    null | 'compress' | 'upscale' | 'bgremove' | 'convert'
+  >(null)
   const [dialogImageIds, setDialogImageIds] = useState<number[]>([])
 
   // Sync search query changes to SQLite and reload images
@@ -212,17 +218,23 @@ function IndexPage() {
     const result = await importImagesBulk(filepaths)
     const { imported, duplicates, failed } = result
 
-    if (imported > 0) {
-      toast(`Imported ${imported} image${imported > 1 ? 's' : ''}`, 'success')
+    if (imported > 0 && filepaths.length === 1) {
+      await addNotification({
+        message: `Imported ${imported} image${imported > 1 ? 's' : ''}`,
+        status: 'success',
+      })
     }
 
-    if (duplicates > 0) {
-      toast(`${duplicates} file${duplicates > 1 ? 's' : ''} already exists, skipped`, 'info')
+    if (duplicates > 0 && filepaths.length === 1) {
+      await addNotification({
+        message: `${duplicates} file${duplicates > 1 ? 's' : ''} already exists, skipped`,
+        status: 'info',
+      })
     }
 
     if (filepaths.length > 1) {
       const parts: string[] = []
-      if (imported > 0) parts.push(`${imported} imported`)
+      if (imported > 0) parts.push(`${imported} imported images`)
       if (duplicates > 0) parts.push(`${duplicates} already exists`)
       if (failed > 0) parts.push(`${failed} failed`)
 
@@ -241,7 +253,7 @@ function IndexPage() {
       await clearSelections()
       setImages((prev) => prev.filter((img) => !ids.includes(img.id)))
       await addNotification({
-        message: `Deleted ${count} image${count > 1 ? 's' : ''}`,
+        message: `Removed ${count} image${count > 1 ? 's' : ''}`,
         status: 'success',
       })
     } catch (err) {
@@ -256,7 +268,7 @@ function IndexPage() {
       setSelectedIds(newIds)
       await removeSelection(id)
       await addNotification({
-        message: 'Deleted 1 image',
+        message: 'Removed 1 image',
         status: 'success',
       })
     },
@@ -378,7 +390,7 @@ function IndexPage() {
         onSortFieldChange={setSortField}
         onSortOrderChange={setSortOrder}
         hasActiveFilters={hasActiveFilters}
-          onResetFilters={resetFiltersHandler}
+        onResetFilters={resetFiltersHandler}
       />
       <ImageGrid
         images={images}

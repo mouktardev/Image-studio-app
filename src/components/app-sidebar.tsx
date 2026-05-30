@@ -13,8 +13,10 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar'
 import { ImageDown, SettingsIcon, TerminalIcon, Folder, Video } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
 import { useValue, useSetPartialValuesCallback } from '@/schema/tinybase-schema'
 import packageJson from '../../package.json'
+import { cn } from '@/lib/utils'
 
 export function AppSidebar() {
   const location = useLocation()
@@ -47,10 +49,12 @@ export function AppSidebar() {
               <img
                 src="/app-icon.png"
                 alt="Image Studio"
-                className="h-6 w-6 shrink-0 rounded-md object-cover"
+                className={cn(
+                  isCollapsed ? 'size-6' : 'size-15',
+                  'shrink-0 rounded-md object-cover'
+                )}
               />
-              <div className="flex flex-col group-data-[collapsible=icon]:hidden">
-                <span className="text-sm leading-tight font-semibold">Image studio</span>
+              <div className="group-data-[collapsible=icon]:hidden">
                 <span className="text-muted-foreground text-[10px]">v{packageJson.version}</span>
               </div>
             </div>
@@ -58,6 +62,7 @@ export function AppSidebar() {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
+        <Separator className="my-2" />
         <SidebarGroup>
           <SidebarGroupLabel>tools</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -101,6 +106,7 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        <Separator className="my-2" />
         <SidebarGroup>
           <SidebarGroupLabel>settings</SidebarGroupLabel>
           <SidebarGroupContent>

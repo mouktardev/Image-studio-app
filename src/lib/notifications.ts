@@ -1,6 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
-import { toast as sonnerToast } from 'sonner'
 import { useCallback, useEffect, useState } from 'react'
 
 export interface Notification {
@@ -42,21 +41,6 @@ export async function markAllAsRead(): Promise<void> {
 
 export async function clearAll(): Promise<void> {
   return invoke<void>('clear_all_notifications')
-}
-
-export function toast(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  switch (type) {
-    case 'success':
-      sonnerToast.success(message)
-      break
-    case 'error':
-      sonnerToast.error(message)
-      break
-    case 'info':
-    default:
-      sonnerToast(message)
-      break
-  }
 }
 
 export async function getSelections(): Promise<number[]> {

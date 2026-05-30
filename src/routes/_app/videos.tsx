@@ -30,7 +30,6 @@ import { VideoTools } from '@/components/video-tools'
 import { CompressVideoDialog } from '@/components/dialogs/compress-video-dialog'
 import { ConvertFormatDialog } from '@/components/dialogs'
 import { error as logError, info as logInfo } from '@/lib/logger'
-import { toast } from '@/lib/notifications'
 import {
   Dialog,
   DialogContent,
@@ -204,17 +203,23 @@ function VideosPage() {
       const result = await importVideos(paths)
       const { imported, duplicates, failed } = result
 
-      if (imported > 0) {
-        toast(`Imported ${imported} video${imported > 1 ? 's' : ''}`, 'success')
+      if (imported > 0 && paths.length === 1) {
+        await addNotification({
+          message: `Imported ${imported} video${imported > 1 ? 's' : ''}`,
+          status: 'success',
+        })
       }
 
-      if (duplicates > 0) {
-        toast(`${duplicates} video${duplicates > 1 ? 's' : ''} already exists, skipped`, 'info')
+      if (duplicates > 0 && paths.length === 1) {
+        await addNotification({
+          message: `${duplicates} video${duplicates > 1 ? 's' : ''} already exists, skipped`,
+          status: 'info',
+        })
       }
 
       if (paths.length > 1) {
         const parts: string[] = []
-        if (imported > 0) parts.push(`${imported} imported`)
+        if (imported > 0) parts.push(`${imported} imported videos`)
         if (duplicates > 0) parts.push(`${duplicates} already exists`)
         if (failed > 0) parts.push(`${failed} failed`)
 
@@ -227,7 +232,6 @@ function VideosPage() {
       await reloadVideos()
     } catch (err) {
       logError(`Failed to import videos: ${err}`)
-      toast(String(err).replace(/^Error:\s*/, ''), 'error')
     } finally {
       setIsImporting(false)
     }
@@ -240,10 +244,9 @@ function VideosPage() {
       setFfmpegNeeded(false)
       const status = await checkFfmpegStatus()
       setFfmpegStatus(status)
-      toast('FFmpeg downloaded successfully', 'success')
+      await addNotification({ message: 'FFmpeg downloaded successfully', status: 'success' })
     } catch (err) {
       logError(`Failed to download FFmpeg: ${err}`)
-      toast('Failed to download FFmpeg', 'error')
     } finally {
       setIsDownloadingFfmpeg(false)
     }
@@ -265,9 +268,9 @@ function VideosPage() {
         setSelectedIds((prev) => prev.filter((i) => i !== id))
         await removeVideoSelection(id)
         await reloadVideos()
+        await addNotification({ message: 'Removed 1 video', status: 'success' })
       } catch (err) {
         logError(`Failed to delete video: ${err}`)
-        toast('Failed to delete video', 'error')
       }
     },
     [reloadVideos]
@@ -282,12 +285,11 @@ function VideosPage() {
       await clearVideoSelections()
       await reloadVideos()
       await addNotification({
-        message: `Deleted ${count} video${count > 1 ? 's' : ''}`,
+        message: `Removed ${count} video${count > 1 ? 's' : ''}`,
         status: 'success',
       })
     } catch (err) {
       logError(`Failed to delete videos: ${err}`)
-      toast('Failed to delete videos', 'error')
     }
   }, [selectedIds, reloadVideos])
 
@@ -296,12 +298,14 @@ function VideosPage() {
       try {
         const result = await compressVideosByIds(ids, quality, preset)
         if (result > 0) {
-          toast(`Compressed ${result} video${result > 1 ? 's' : ''}`, 'success')
+          await addNotification({
+            message: `Compressed ${result} video${result > 1 ? 's' : ''}`,
+            status: 'success',
+          })
           await reloadVideos()
         }
       } catch (err) {
         logError(`Failed to compress videos: ${err}`)
-        toast('Failed to compress videos', 'error')
       }
     },
     [reloadVideos]
@@ -313,10 +317,12 @@ function VideosPage() {
         const count = ids.length
         await convertVideosByIds(ids, format as VideoFormat)
         await reloadVideos()
-        toast(`Converted ${count} video${count > 1 ? 's' : ''} to ${format.toUpperCase()}`, 'success')
+        await addNotification({
+          message: `Converted ${count} video${count > 1 ? 's' : ''} to ${format.toUpperCase()}`,
+          status: 'success',
+        })
       } catch (err) {
         logError(`Failed to convert videos: ${err}`)
-        toast('Failed to convert videos', 'error')
       }
     },
     [reloadVideos]
@@ -350,12 +356,18 @@ function VideosPage() {
         const result = await importVideos(files)
         const { imported, duplicates, failed } = result
 
-        if (imported > 0) {
-          toast(`Imported ${imported} video${imported > 1 ? 's' : ''}`, 'success')
+        if (imported > 0 && files.length === 1) {
+          await addNotification({
+            message: `Imported ${imported} video${imported > 1 ? 's' : ''}`,
+            status: 'success',
+          })
         }
 
-        if (duplicates > 0) {
-          toast(`${duplicates} video${duplicates > 1 ? 's' : ''} already exists, skipped`, 'info')
+        if (duplicates > 0 && files.length === 1) {
+          await addNotification({
+            message: `${duplicates} video${duplicates > 1 ? 's' : ''} already exists, skipped`,
+            status: 'info',
+          })
         }
 
         if (files.length > 1) {
@@ -373,7 +385,6 @@ function VideosPage() {
         await reloadVideos()
       } catch (err) {
         logError(`Failed to import dropped videos: ${err}`)
-        toast(String(err).replace(/^Error:\s*/, ''), 'error')
       } finally {
         setIsImporting(false)
       }

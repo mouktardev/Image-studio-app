@@ -1,7 +1,7 @@
 {
   "name": "image-studio",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "author": "Mouktar",
   "type": "module",
   "scripts": {
@@ -38,7 +38,6 @@
     "react-compare-slider": "^3.1.0",
     "react-dom": "^19.1.0",
     "shadcn": "^3.8.5",
-    "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.1",
     "tinybase": "^7.3.5",

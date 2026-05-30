@@ -3,7 +3,7 @@ import { useRouter } from '@tanstack/react-router'
 import { DatabaseZap } from 'lucide-react'
 import { useValue, useSetValueCallback } from '@/schema/tinybase-schema'
 import { syncDatabase } from '@/lib/tauri'
-import { toast } from '@/lib/notifications'
+import { addNotification } from '@/lib/notifications'
 import { error as logError } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -18,16 +18,15 @@ export function DbSyncButton() {
     try {
       const deletedCount = await syncDatabase()
       if (deletedCount > 0) {
-        toast(`Cleaned up ${deletedCount} orphaned records.`, 'success')
+        await addNotification({ message: `Cleaned up ${deletedCount} orphaned records.`, status: 'success' })
       } else {
-        toast('Database is in sync.', 'info')
+        await addNotification({ message: 'Database is in sync.', status: 'info' })
       }
       clearDbNeedsSync()
       // Invalidate router cache to refresh all route loaders
       await router.invalidate()
     } catch (err) {
       logError(`Failed to sync database: ${err}`)
-      toast('Failed to sync database', 'error')
     }
   }, [clearDbNeedsSync, router])
 
