@@ -1,11 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
+import { useValue } from '@/schema/tinybase-schema'
 import {
   getAllVideos,
   selectVideoFiles,
   importVideos,
   deleteVideosByIds,
-  checkFfmpegStatus,
   downloadFfmpeg,
   getFilters,
   updateFilters,
@@ -39,6 +39,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { Download, Loader2 } from 'lucide-react'
 
 export const Route = createFileRoute('/_app/videos')({
@@ -71,11 +72,16 @@ function VideosPage() {
 
   const [isImporting, setIsImporting] = useState(false)
   const [ffmpegNeeded, setFfmpegNeeded] = useState(false)
-  const [isDownloadingFfmpeg, setIsDownloadingFfmpeg] = useState(false)
-  const [ffmpegStatus, setFfmpegStatus] = useState<{
-    available: boolean
-    size: number | null
-  } | null>(null)
+
+  const isDownloadingFfmpeg = useValue('isDownloadingFfmpeg')
+  const ffmpegDownloadProgress = useValue('ffmpegDownloadProgress')
+  const ffmpegAvailable = useValue('ffmpegAvailable')
+
+  useEffect(() => {
+    if (ffmpegAvailable && ffmpegNeeded) {
+      setFfmpegNeeded(false)
+    }
+  }, [ffmpegAvailable, ffmpegNeeded])
 
   const [compressDialogOpen, setCompressDialogOpen] = useState(false)
   const [convertDialogOpen, setConvertDialogOpen] = useState(false)
@@ -186,10 +192,8 @@ function VideosPage() {
 
   const handleImport = useCallback(async () => {
     try {
-      const status = await checkFfmpegStatus()
-      if (!status.available) {
+      if (!ffmpegAvailable) {
         setFfmpegNeeded(true)
-        setFfmpegStatus(status)
         return
       }
 
@@ -235,20 +239,15 @@ function VideosPage() {
     } finally {
       setIsImporting(false)
     }
-  }, [reloadVideos])
+  }, [reloadVideos, ffmpegAvailable])
 
   const handleDownloadFfmpeg = useCallback(async () => {
-    setIsDownloadingFfmpeg(true)
     try {
       await downloadFfmpeg()
       setFfmpegNeeded(false)
-      const status = await checkFfmpegStatus()
-      setFfmpegStatus(status)
       await addNotification({ message: 'FFmpeg downloaded successfully', status: 'success' })
     } catch (err) {
       logError(`Failed to download FFmpeg: ${err}`)
-    } finally {
-      setIsDownloadingFfmpeg(false)
     }
   }, [])
 
@@ -344,10 +343,8 @@ function VideosPage() {
     async (files: string[]) => {
       if (files.length === 0) return
 
-      const status = await checkFfmpegStatus()
-      if (!status.available) {
+      if (!ffmpegAvailable) {
         setFfmpegNeeded(true)
-        setFfmpegStatus(status)
         return
       }
 
@@ -389,7 +386,7 @@ function VideosPage() {
         setIsImporting(false)
       }
     },
-    [reloadVideos]
+    [reloadVideos, ffmpegAvailable]
   )
 
   return (
@@ -450,14 +447,20 @@ function VideosPage() {
               can continue.
             </DialogDescription>
           </DialogHeader>
-          {ffmpegStatus && !ffmpegStatus.available && (
-            <div className="flex items-center gap-2 rounded-md border p-3">
-              <Download className="text-muted-foreground h-5 w-5" />
-              <div className="flex flex-col">
+          {!ffmpegAvailable && (
+            <div className="flex items-start gap-2 rounded-md border p-3">
+              <Download className="text-muted-foreground mt-0.5 h-5 w-5" />
+              <div className="flex flex-col gap-1">
                 <span className="text-sm font-medium">FFmpeg (~80 MB)</span>
                 <span className="text-muted-foreground text-xs">
                   Required for video metadata extraction and processing
                 </span>
+                {isDownloadingFfmpeg && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <Progress value={ffmpegDownloadProgress} className="w-24" />
+                    <span className="text-xs">{ffmpegDownloadProgress}%</span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -465,19 +468,12 @@ function VideosPage() {
             <Button variant="outline" onClick={() => setFfmpegNeeded(false)}>
               Cancel
             </Button>
-            <Button onClick={handleDownloadFfmpeg} disabled={isDownloadingFfmpeg}>
-              {isDownloadingFfmpeg ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Downloading...
-                </>
-              ) : (
-                <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Download FFmpeg
-                </>
-              )}
-            </Button>
+            {!isDownloadingFfmpeg && (
+              <Button onClick={handleDownloadFfmpeg}>
+                <Download className="mr-2 h-4 w-4" />
+                Download FFmpeg
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

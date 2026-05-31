@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use anyhow::{Context, Result};
-use serde::Serialize;
+
 use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 use crate::DbState;
 use crate::crud::models;
@@ -13,21 +13,6 @@ use ndarray::{Array, Axis};
 
 const MODEL_NAME: &str = "bria-rmbg-1.4";
 
-#[derive(Clone, Serialize)]
-pub struct BgRemovalProgress {
-    pub id: i64,
-    pub progress: u8,
-    pub message: String,
-}
-
-#[derive(Clone, Serialize)]
-pub struct BgRemovalModelStatus {
-    pub name: String,
-    pub downloaded: bool,
-    pub path: String,
-    pub size: Option<i64>,
-}
-
 pub fn check_model_downloaded(app: &AppHandle) -> Result<(PathBuf, i64), String> {
     models::check_downloaded(app, MODEL_NAME)
 }
@@ -35,44 +20,20 @@ pub fn check_model_downloaded(app: &AppHandle) -> Result<(PathBuf, i64), String>
 
 
 #[tauri::command]
-pub async fn get_bg_removal_model_status(app: AppHandle) -> Result<BgRemovalModelStatus, String> {
-    let status = models::get_status(&app, MODEL_NAME.to_string());
-    Ok(BgRemovalModelStatus {
-        name: status.name,
-        downloaded: status.downloaded,
-        path: status.path,
-        size: status.size,
-    })
+pub async fn get_bg_removal_model_status(app: AppHandle) -> Result<models::ModelStatus, String> {
+    Ok(models::get_status(&app, MODEL_NAME.to_string()))
 }
 
 #[tauri::command]
 pub async fn download_bg_removal_model(
     app: AppHandle,
 ) -> Result<String, String> {
-    let _ = app.emit("bg-removal-model-download-progress", BgRemovalProgress {
-        id: 0,
-        progress: 0,
-        message: "Connecting to HuggingFace...".to_string(),
-    });
-
-    let _ = app.emit("bg-removal-model-download-progress", BgRemovalProgress {
-        id: 0,
-        progress: 10,
-        message: "Downloading BRIA RMBG-1.4 model...".to_string(),
-    });
-
     let app_clone = app.clone();
     let model_path = tauri::async_runtime::spawn_blocking(move || -> Result<PathBuf, String> {
         models::download_model_blocking(&app_clone, MODEL_NAME, "bg-removal-model-download-progress")
     })
     .await
     .map_err(|e| format!("Task failed: {}", e))??;
-
-    let _ = app.emit("bg-removal-model-download-progress", BgRemovalProgress {
-        id: 0,
-        progress: 100,
-        message: "Download complete".to_string(),
-    });
 
     Ok(model_path.to_string_lossy().to_string())
 }
@@ -151,8 +112,6 @@ fn run_bg_removal_inference(
     input_path: &PathBuf,
     output_path: &PathBuf,
     model_path: &PathBuf,
-    _app: Option<AppHandle>,
-    _image_id: i64,
 ) -> Result<()> {
     let session = create_onnx_session(model_path)?;
     let original_image = image::open(input_path).context("Failed to open image")?;
@@ -202,7 +161,7 @@ pub async fn remove_background_by_ids(
                     .flatten();
 
                 if let Some((filepath,)) = image_record {
-                    let _ = app_clone.emit("bg-removal-progress", BgRemovalProgress {
+                    let _ = app_clone.emit("bg-removal-progress", models::DownloadProgress {
                         id,
                         progress: 10,
                         message: "Reading...".to_string(),
@@ -229,21 +188,18 @@ pub async fn remove_background_by_ids(
                         _ => orig_path.with_file_name(&temp_filename),
                     };
 
-                    let _ = app_clone.emit("bg-removal-progress", BgRemovalProgress {
+                    let _ = app_clone.emit("bg-removal-progress", models::DownloadProgress {
                         id,
                         progress: 20,
                         message: "Processing...".to_string(),
                     });
 
                     let temp_filepath_clone = temp_filepath.clone();
-                    let app_for_blocking = app_clone.clone();
                     let removal_result = tauri::async_runtime::spawn_blocking(move || -> Result<()> {
                         run_bg_removal_inference(
                             &orig_path,
                             &temp_filepath_clone,
                             &model_path_clone,
-                            Some(app_for_blocking),
-                            id,
                         )
                     }).await;
 
@@ -276,7 +232,7 @@ pub async fn remove_background_by_ids(
                             .await;
 
                             if insert_result.is_ok() {
-                                let _ = app_clone.emit("bg-removal-progress", BgRemovalProgress {
+                                let _ = app_clone.emit("bg-removal-progress", models::DownloadProgress {
                                     id,
                                     progress: 100,
                                     message: "Done".to_string(),
@@ -295,7 +251,7 @@ pub async fn remove_background_by_ids(
                         }
                     }
                     
-                    let _ = app_clone.emit("bg-removal-progress", BgRemovalProgress {
+                    let _ = app_clone.emit("bg-removal-progress", models::DownloadProgress {
                         id,
                         progress: 0,
                         message: "Failed".to_string(),

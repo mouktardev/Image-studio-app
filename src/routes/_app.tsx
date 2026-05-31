@@ -8,6 +8,8 @@ import { UpscalingListener } from '@/components/upscaling-listener'
 import { BgRemovalListener } from '@/components/bg-removal-listener'
 import { VideoCompressionListener } from '@/components/video-compression-listener'
 import { ConversionListener } from '@/components/conversion-listener'
+import { DownloadListener } from '@/components/download-listener'
+import { DownloadStatusInit } from '@/components/download-status-init'
 import { useValue } from '@/schema/tinybase-schema'
 import UpdateChecker from '@/components/update-checker'
 import { DbSyncButton } from '@/components/db-sync-button'
@@ -26,6 +28,8 @@ function RouteComponent() {
       <BgRemovalListener />
       <VideoCompressionListener />
       <ConversionListener />
+      <DownloadListener />
+      <DownloadStatusInit />
       <AppSidebar />
       <SidebarInset className="flex flex-col">
         <header className="bg-sidebar flex h-10 shrink-0 items-center justify-between gap-4 border-b px-4">

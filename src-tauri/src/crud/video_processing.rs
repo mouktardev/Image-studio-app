@@ -245,7 +245,6 @@ pub async fn download_ffmpeg(app: AppHandle) -> Result<String, String> {
     std::fs::create_dir_all(&ffmpeg_dir)
         .map_err(|e| format!("Failed to create ffmpeg dir: {}", e))?;
     let _ = FFMPEG_DIR.set(ffmpeg_dir.clone());
-    log::info!("Downloading FFmpeg to: {:?}", ffmpeg_dir);
 
     let _ = app.emit("ffmpeg-download-progress", VideoBgRemovalProgress {
         id: 0,
@@ -254,13 +253,71 @@ pub async fn download_ffmpeg(app: AppHandle) -> Result<String, String> {
         eta_seconds: None,
     });
 
+    let app_for_blocking = app.clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         let url = ffmpeg_sidecar::download::ffmpeg_download_url()
             .map_err(|e| format!("Failed to get FFmpeg download URL: {}", e))?;
-        let archive = ffmpeg_sidecar::download::download_ffmpeg_package(url, &ffmpeg_dir)
-            .map_err(|e| format!("Failed to download FFmpeg: {}", e))?;
-        ffmpeg_sidecar::download::unpack_ffmpeg(&archive, &ffmpeg_dir)
+
+        let temp_path = ffmpeg_dir.join("ffmpeg-release-essentials.zip");
+
+        let client = reqwest::blocking::Client::new();
+        let mut response = client
+            .get(url)
+            .send()
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            return Err(format!("HTTP {} error downloading FFmpeg", response.status()));
+        }
+
+        let total = response.content_length().unwrap_or(0);
+        let mut file = fs::File::create(&temp_path)
+            .map_err(|e| format!("Failed to create temp file: {}", e))?;
+        let mut downloaded: u64 = 0;
+        let mut last_pct: u8 = 0;
+        let mut buffer = [0u8; 65536];
+
+        loop {
+            let n = response
+                .read(&mut buffer)
+                .map_err(|e| format!("Read error: {}", e))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buffer[..n])
+                .map_err(|e| format!("Write error: {}", e))?;
+            downloaded += n as u64;
+
+            let pct = if total > 0 {
+                ((downloaded as f64 / total as f64) * 100.0).round() as u8
+            } else {
+                0
+            };
+            if pct >= last_pct + 5 || downloaded >= total {
+                last_pct = pct;
+                let _ = app_for_blocking.emit("ffmpeg-download-progress", VideoBgRemovalProgress {
+                    id: 0,
+                    progress: pct.min(99),
+                    message: format!("Downloading... {}%", pct),
+                    eta_seconds: None,
+                });
+            }
+        }
+
+        file.sync_all()
+            .map_err(|e| format!("Failed to sync file: {}", e))?;
+        drop(file);
+
+        let _ = app_for_blocking.emit("ffmpeg-download-progress", VideoBgRemovalProgress {
+            id: 0,
+            progress: 99,
+            message: "Extracting FFmpeg...".to_string(),
+            eta_seconds: None,
+        });
+
+        ffmpeg_sidecar::download::unpack_ffmpeg(&temp_path, &ffmpeg_dir)
             .map_err(|e| format!("Failed to unpack FFmpeg: {}", e))?;
+        let _ = std::fs::remove_file(&temp_path);
         Ok(())
     })
     .await

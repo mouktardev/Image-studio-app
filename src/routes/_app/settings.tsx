@@ -1,5 +1,6 @@
 import { createFileRoute, useRouter } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useValue, useCell, useSetValueCallback, useSetRowCallback } from '@/schema/tinybase-schema'
 import {
   initDatabase,
   dbExists,
@@ -20,6 +21,7 @@ import {
 } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
@@ -59,12 +61,14 @@ const BG_REMOVAL_MODEL_SIZE = 176 * 1024 * 1024
 
 export const Route = createFileRoute('/_app/settings')({
   loader: async () => {
+    const settings = await getUpscaleSettings()
     const [
       dbInitialized,
       outputPath,
       dbPathResult,
       upscaleSettings,
-      modelStatus,
+      modelStatusX2,
+      modelStatusX4,
       bgRemovalStatus,
       ffmpegStatus,
       updateChecksEnabled,
@@ -72,8 +76,9 @@ export const Route = createFileRoute('/_app/settings')({
       dbExists(),
       getSetting('output'),
       getDbPath(),
-      getUpscaleSettings(),
-      getModelStatus((await getUpscaleSettings()).model),
+      Promise.resolve(settings),
+      getModelStatus('realesrgan-x2'),
+      getModelStatus('realesrgan-x4'),
       getBgRemovalModelStatus(),
       checkFfmpegStatus(),
       getSetting('update_checks_enabled'),
@@ -84,7 +89,8 @@ export const Route = createFileRoute('/_app/settings')({
       outputPath,
       dbPath: dbPathResult,
       upscaleSettings,
-      modelStatus,
+      modelStatusX2,
+      modelStatusX4,
       bgRemovalStatus,
       ffmpegStatus,
       updateChecksEnabled: updateChecksEnabled !== 'false',
@@ -108,14 +114,53 @@ function SettingsPage() {
   const [updateChecksEnabled, setUpdateChecksEnabled] = useState(loaderData.updateChecksEnabled)
 
   const [upscaleSettings, setUpscaleSettings] = useState(loaderData.upscaleSettings)
-  const [modelStatus, setModelStatus] = useState(loaderData.modelStatus)
-  const [isDownloadingUpscale, setIsDownloadingUpscale] = useState(false)
 
-  const [bgRemovalModelStatus, setBgRemovalModelStatus] = useState(loaderData.bgRemovalStatus)
-  const [isDownloadingBgRemoval, setIsDownloadingBgRemoval] = useState(false)
+  const isDownloadingUpscale = useValue('isDownloadingUpscale')
+  const upscaleDownloadProgress = useValue('upscaleDownloadProgress')
+  const startUpscaleDownload = useSetValueCallback('isDownloadingUpscale', () => true)
+  const finishUpscaleDownload = useSetValueCallback('isDownloadingUpscale', () => false)
 
-  const [ffmpegStatus, setFfmpegStatus] = useState(loaderData.ffmpegStatus)
-  const [isDownloadingFfmpeg, setIsDownloadingFfmpeg] = useState(false)
+  const isDownloadingBgRemoval = useValue('isDownloadingBgRemoval')
+  const bgRemovalDownloadProgress = useValue('bgRemovalDownloadProgress')
+  const startBgRemovalDownload = useSetValueCallback('isDownloadingBgRemoval', () => true)
+  const finishBgRemovalDownload = useSetValueCallback('isDownloadingBgRemoval', () => false)
+
+  const currentModel = upscaleSettings?.model || 'realesrgan-x4'
+  const upscaleDownloaded = useCell('model_downloads', currentModel, 'downloaded')
+  const bgRemovalDownloaded = useCell('model_downloads', 'bria-rmbg-1.4', 'downloaded')
+
+  const isDownloadingFfmpeg = useValue('isDownloadingFfmpeg')
+  const ffmpegAvailable = useValue('ffmpegAvailable')
+  const ffmpegDownloadProgress = useValue('ffmpegDownloadProgress')
+  const startFfmpegDownload = useSetValueCallback('isDownloadingFfmpeg', () => true)
+  const finishFfmpegDownload = useSetValueCallback('isDownloadingFfmpeg', () => false)
+
+  const initModel = useSetRowCallback(
+    'model_downloads',
+    (info: { name: string; downloaded: boolean }) => info.name,
+    (info: { name: string; downloaded: boolean }) => ({ downloaded: info.downloaded }),
+    []
+  )
+
+  const markDownloaded = useSetRowCallback(
+    'model_downloads',
+    (name: string) => name,
+    () => ({ downloaded: true }),
+    []
+  )
+
+  const setInitFfmpeg = useSetValueCallback(
+    'ffmpegAvailable',
+    () => loaderData.ffmpegStatus?.available ?? false,
+    [loaderData]
+  )
+
+  useEffect(() => {
+    initModel({ name: 'realesrgan-x2', downloaded: loaderData.modelStatusX2?.downloaded ?? false })
+    initModel({ name: 'realesrgan-x4', downloaded: loaderData.modelStatusX4?.downloaded ?? false })
+    initModel({ name: 'bria-rmbg-1.4', downloaded: loaderData.bgRemovalStatus?.downloaded ?? false })
+    setInitFfmpeg()
+  }, [loaderData, initModel, setInitFfmpeg])
 
   async function handleInitDatabase() {
     setIsInitializing(true)
@@ -346,8 +391,6 @@ function SettingsPage() {
                       try {
                         await saveUpscaleSettings(model)
                         setUpscaleSettings({ ...upscaleSettings!, model })
-                        const status = await getModelStatus(model)
-                        setModelStatus(status)
                       } catch (err) {
                         logError(`Failed to save upscale model: ${err}`)
                       }
@@ -372,23 +415,31 @@ function SettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-sm">Model Status</Label>
                   <div className="flex items-center gap-2">
-                    <Badge variant={modelStatus?.downloaded ? 'default' : 'secondary'}>
-                      {modelStatus?.downloaded ? 'Downloaded' : 'Not Downloaded'}
+                    <Badge variant={upscaleDownloaded ? 'default' : 'secondary'}>
+                      {upscaleDownloaded ? 'Downloaded' : 'Not Downloaded'}
                     </Badge>
                     <span className="text-muted-foreground text-xs">
-                      {modelStatus?.downloaded && modelStatus?.size
-                        ? formatBytes(modelStatus.size)
-                        : formatBytes(MODEL_SIZES[upscaleSettings?.model || 'realesrgan-x4'] || 0)}
+                      {formatBytes(MODEL_SIZES[upscaleSettings?.model || 'realesrgan-x4'] || 0)}
                     </span>
-                    {modelStatus?.downloaded && (
+                    {isDownloadingUpscale && (
+                      <div className="flex items-center gap-2">
+                        <Progress value={upscaleDownloadProgress} className="w-24" />
+                        <span className="text-xs">{upscaleDownloadProgress}%</span>
+                      </div>
+                    )}
+                    {upscaleDownloaded && !isDownloadingUpscale && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (modelStatus?.path) {
-                            revealInExplorer(modelStatus.path).catch((err) =>
-                              logError(`Failed to reveal model: ${err}`)
-                            )
+                        onClick={async () => {
+                          try {
+                            const model = upscaleSettings?.model || 'realesrgan-x4'
+                            const status = await getModelStatus(model)
+                            if (status?.path) {
+                              revealInExplorer(status.path)
+                            }
+                          } catch (err) {
+                            logError(`Failed to reveal model: ${err}`)
                           }
                         }}
                       >
@@ -396,31 +447,29 @@ function SettingsPage() {
                         Reveal
                       </Button>
                     )}
-                    {!modelStatus?.downloaded && (
+                    {!upscaleDownloaded && !isDownloadingUpscale && (
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={isDownloadingUpscale}
                         onClick={async () => {
-                          setIsDownloadingUpscale(true)
+                          startUpscaleDownload()
                           try {
                             const model = upscaleSettings?.model || 'realesrgan-x4'
                             await downloadModel(model)
-                            const status = await getModelStatus(model)
-                            setModelStatus(status)
+                            markDownloaded(model)
                             await addNotification({
-                              message: 'Model downloaded successfully',
+                              message: `${model} downloaded successfully`,
                               status: 'success',
                             })
                           } catch (err) {
                             logError(`Failed to download model: ${err}`)
                           } finally {
-                            setIsDownloadingUpscale(false)
+                            finishUpscaleDownload()
                           }
                         }}
                       >
                         <Download className="mr-2 h-4 w-4" />
-                        {isDownloadingUpscale ? 'Downloading...' : 'Download'}
+                        Download
                       </Button>
                     )}
                   </div>
@@ -458,23 +507,30 @@ function SettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-sm">Model Status</Label>
                   <div className="flex items-center gap-2">
-                    <Badge variant={bgRemovalModelStatus?.downloaded ? 'default' : 'secondary'}>
-                      {bgRemovalModelStatus?.downloaded ? 'Downloaded' : 'Not Downloaded'}
+                    <Badge variant={bgRemovalDownloaded ? 'default' : 'secondary'}>
+                      {bgRemovalDownloaded ? 'Downloaded' : 'Not Downloaded'}
                     </Badge>
                     <span className="text-muted-foreground text-xs">
-                      {bgRemovalModelStatus?.downloaded && bgRemovalModelStatus?.size
-                        ? formatBytes(bgRemovalModelStatus.size)
-                        : formatBytes(BG_REMOVAL_MODEL_SIZE)}
+                      {formatBytes(BG_REMOVAL_MODEL_SIZE)}
                     </span>
-                    {bgRemovalModelStatus?.downloaded && (
+                    {isDownloadingBgRemoval && (
+                      <div className="flex items-center gap-2">
+                        <Progress value={bgRemovalDownloadProgress} className="w-24" />
+                        <span className="text-xs">{bgRemovalDownloadProgress}%</span>
+                      </div>
+                    )}
+                    {bgRemovalDownloaded && !isDownloadingBgRemoval && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (bgRemovalModelStatus?.path) {
-                            revealInExplorer(bgRemovalModelStatus.path).catch((err) =>
-                              logError(`Failed to reveal model: ${err}`)
-                            )
+                        onClick={async () => {
+                          try {
+                            const status = await getBgRemovalModelStatus()
+                            if (status?.path) {
+                              revealInExplorer(status.path)
+                            }
+                          } catch (err) {
+                            logError(`Failed to reveal model: ${err}`)
                           }
                         }}
                       >
@@ -482,30 +538,28 @@ function SettingsPage() {
                         Reveal
                       </Button>
                     )}
-                    {!bgRemovalModelStatus?.downloaded && (
+                    {!bgRemovalDownloaded && !isDownloadingBgRemoval && (
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={isDownloadingBgRemoval}
                         onClick={async () => {
-                          setIsDownloadingBgRemoval(true)
+                          startBgRemovalDownload()
                           try {
                             await downloadBgRemovalModel()
-                            const status = await getBgRemovalModelStatus()
-                            setBgRemovalModelStatus(status)
+                            markDownloaded('bria-rmbg-1.4')
                             await addNotification({
-                              message: 'Model downloaded successfully',
+                              message: 'bria-rmbg-1.4 downloaded successfully',
                               status: 'success',
                             })
                           } catch (err) {
                             logError(`Failed to download model: ${err}`)
                           } finally {
-                            setIsDownloadingBgRemoval(false)
+                            finishBgRemovalDownload()
                           }
                         }}
                       >
                         <Download className="mr-2 h-4 w-4" />
-                        {isDownloadingBgRemoval ? 'Downloading...' : 'Download'}
+                        Download
                       </Button>
                     )}
                   </div>
@@ -537,23 +591,28 @@ function SettingsPage() {
                 <div className="space-y-2">
                   <Label className="text-sm">FFmpeg Status</Label>
                   <div className="flex items-center gap-2">
-                    <Badge variant={ffmpegStatus?.available ? 'default' : 'secondary'}>
-                      {ffmpegStatus?.available ? 'Downloaded' : 'Not Downloaded'}
+                    <Badge variant={ffmpegAvailable ? 'default' : 'secondary'}>
+                      {ffmpegAvailable ? 'Downloaded' : 'Not Downloaded'}
                     </Badge>
-                    <span className="text-muted-foreground text-xs">
-                      {ffmpegStatus?.available && ffmpegStatus?.size
-                        ? formatBytes(ffmpegStatus.size)
-                        : '~80 MB download'}
-                    </span>
-                    {ffmpegStatus?.available && (
+                    <span className="text-muted-foreground text-xs">~80 MB download</span>
+                    {isDownloadingFfmpeg && (
+                      <div className="flex items-center gap-2">
+                        <Progress value={ffmpegDownloadProgress} className="w-24" />
+                        <span className="text-xs">{ffmpegDownloadProgress}%</span>
+                      </div>
+                    )}
+                    {ffmpegAvailable && !isDownloadingFfmpeg && (
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => {
-                          if (ffmpegStatus?.path) {
-                            revealInExplorer(ffmpegStatus.path).catch((err) =>
-                              logError(`Failed to reveal FFmpeg: ${err}`)
-                            )
+                        onClick={async () => {
+                          try {
+                            const status = await checkFfmpegStatus()
+                            if (status?.path) {
+                              revealInExplorer(status.path)
+                            }
+                          } catch (err) {
+                            logError(`Failed to reveal FFmpeg: ${err}`)
                           }
                         }}
                       >
@@ -561,17 +620,14 @@ function SettingsPage() {
                         Reveal
                       </Button>
                     )}
-                    {!ffmpegStatus?.available && (
+                    {!ffmpegAvailable && !isDownloadingFfmpeg && (
                       <Button
                         variant="outline"
                         size="sm"
-                        disabled={isDownloadingFfmpeg}
                         onClick={async () => {
-                          setIsDownloadingFfmpeg(true)
+                          startFfmpegDownload()
                           try {
                             await downloadFfmpeg()
-                            const status = await checkFfmpegStatus()
-                            setFfmpegStatus(status)
                             await addNotification({
                               message: 'FFmpeg downloaded successfully',
                               status: 'success',
@@ -579,12 +635,12 @@ function SettingsPage() {
                           } catch (err) {
                             logError(`Failed to download FFmpeg: ${err}`)
                           } finally {
-                            setIsDownloadingFfmpeg(false)
+                            finishFfmpegDownload()
                           }
                         }}
                       >
                         <Download className="mr-2 h-4 w-4" />
-                        {isDownloadingFfmpeg ? 'Downloading...' : 'Download'}
+                        Download
                       </Button>
                     )}
                   </div>

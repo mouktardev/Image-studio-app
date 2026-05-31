@@ -5,6 +5,9 @@ export const tablesSchema = {
   clients: {
     name: { type: 'string' },
   },
+  model_downloads: {
+    downloaded: { type: 'boolean' },
+  },
   compressions: {
     progress: { type: 'number' },
     message: { type: 'string' },
@@ -46,6 +49,13 @@ export const valuesSchema = {
   logsOpen: { type: 'boolean', default: false },
   logsUnread: { type: 'boolean', default: false },
   dbNeedsSync: { type: 'boolean', default: false },
+  isDownloadingUpscale: { type: 'boolean', default: false },
+  isDownloadingBgRemoval: { type: 'boolean', default: false },
+  isDownloadingFfmpeg: { type: 'boolean', default: false },
+  ffmpegAvailable: { type: 'boolean', default: false },
+  upscaleDownloadProgress: { type: 'number', default: 0 },
+  bgRemovalDownloadProgress: { type: 'number', default: 0 },
+  ffmpegDownloadProgress: { type: 'number', default: 0 },
 } as const
 
 export type AppStore = Store<[typeof tablesSchema, typeof valuesSchema]>

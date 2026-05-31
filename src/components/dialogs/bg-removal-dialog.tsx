@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useMemo } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -8,13 +8,17 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Loader2, Download } from 'lucide-react'
+import { Progress } from '@/components/ui/progress'
+import { Download } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { error as logError } from '@/lib/logger'
-import { getBgRemovalModelStatus, downloadBgRemovalModel } from '@/lib/tauri'
+import { addNotification } from '@/lib/notifications'
+import { useValue, useCell, useSetRowCallback } from '@/schema/tinybase-schema'
+import { downloadBgRemovalModel } from '@/lib/tauri'
 import type { Image } from '@/lib/tauri'
 
-const BG_REMOVAL_MODEL_SIZE = 176 * 1024 * 1024 // BRIA RMBG-1.4 ONNX: ~176 MB
+const MODEL_NAME = 'bria-rmbg-1.4'
+const BG_REMOVAL_MODEL_SIZE = 176 * 1024 * 1024
 
 interface BgRemovalDialogProps {
   images: Image[]
@@ -31,43 +35,29 @@ export function BgRemovalDialog({
   onOpenChange,
   onConfirm,
 }: BgRemovalDialogProps) {
-  const [bgRemovalModelDownloaded, setBgRemovalModelDownloaded] = useState(false)
-  const [bgRemovalModelSize, setBgRemovalModelSize] = useState<number | null>(null)
-  const [isBgRemovalDownloading, setIsBgRemovalDownloading] = useState(false)
+  const isDownloading = useValue('isDownloadingBgRemoval')
+  const modelDownloaded = useCell('model_downloads', MODEL_NAME, 'downloaded')
+  const downloadProgress = useValue('bgRemovalDownloadProgress')
+
+  const markDownloaded = useSetRowCallback(
+    'model_downloads',
+    (name: string) => name,
+    () => ({ downloaded: true }),
+    []
+  )
 
   const selectedImages = useMemo(
     () => images.filter((img) => imageIds.includes(img.id)),
     [images, imageIds]
   )
 
-  const checkBgRemovalModelStatus = useCallback(async () => {
-    try {
-      const status = await getBgRemovalModelStatus()
-      setBgRemovalModelDownloaded(status.downloaded)
-      setBgRemovalModelSize(status.size ?? null)
-    } catch (err) {
-      logError(`Failed to check background removal model status: ${err}`)
-      setBgRemovalModelDownloaded(false)
-      setBgRemovalModelSize(null)
-    }
-  }, [])
-
-  // Check background removal model status when dialog opens
-  useEffect(() => {
-    if (open) {
-      checkBgRemovalModelStatus()
-    }
-  }, [open, checkBgRemovalModelStatus])
-
-  const handleDownloadBgRemovalModel = async () => {
-    setIsBgRemovalDownloading(true)
+  const handleDownloadModel = async () => {
     try {
       await downloadBgRemovalModel()
-      setBgRemovalModelDownloaded(true)
+      markDownloaded(MODEL_NAME)
+      await addNotification({ message: `${MODEL_NAME} downloaded successfully`, status: 'success' })
     } catch (err) {
       logError(`Failed to download background removal model: ${err}`)
-    } finally {
-      setIsBgRemovalDownloading(false)
     }
   }
 
@@ -91,35 +81,32 @@ export function BgRemovalDialog({
             <div className="flex items-center gap-2">
               <div
                 className={`h-2 w-2 shrink-0 rounded-full ${
-                  bgRemovalModelDownloaded ? 'bg-green-500' : 'bg-yellow-500'
+                  modelDownloaded ? 'bg-green-500' : 'bg-yellow-500'
                 }`}
               />
               <div className="flex flex-col">
                 <span className="text-sm font-medium">
-                  {bgRemovalModelDownloaded ? 'Downloaded' : 'Not Downloaded'}
+                  {modelDownloaded ? 'Downloaded' : 'Not Downloaded'}
                 </span>
                 <span className="text-muted-foreground text-xs">
-                  {bgRemovalModelDownloaded && bgRemovalModelSize
-                    ? formatBytes(bgRemovalModelSize)
-                    : formatBytes(BG_REMOVAL_MODEL_SIZE)}
+                  {formatBytes(BG_REMOVAL_MODEL_SIZE)}
                 </span>
               </div>
             </div>
-            {!bgRemovalModelDownloaded && (
+            {isDownloading && (
+              <div className="flex items-center gap-2">
+                <Progress value={downloadProgress} className="w-20" />
+                <span className="text-xs">{downloadProgress}%</span>
+              </div>
+            )}
+            {!modelDownloaded && !isDownloading && (
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleDownloadBgRemovalModel}
-                disabled={isBgRemovalDownloading}
+                onClick={handleDownloadModel}
               >
-                {isBgRemovalDownloading ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Download className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                <span className="text-xs">
-                  {isBgRemovalDownloading ? 'Downloading...' : 'Download'}
-                </span>
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                <span className="text-xs">Download</span>
               </Button>
             )}
           </div>
@@ -149,7 +136,7 @@ export function BgRemovalDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} disabled={!bgRemovalModelDownloaded}>
+          <Button onClick={handleConfirm} disabled={!modelDownloaded}>
             Remove Background
           </Button>
         </DialogFooter>

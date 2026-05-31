@@ -8,12 +8,14 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import { Label } from '@/components/ui/label'
-import { Loader2, Download } from 'lucide-react'
+import { Download } from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { error as logError } from '@/lib/logger'
+import { addNotification } from '@/lib/notifications'
+import { useValue, useCell, useSetRowCallback } from '@/schema/tinybase-schema'
 import {
-  getModelStatus,
   downloadModel,
   getUpscaleSettings,
   setUpscaleSettings as saveUpscaleSettings,
@@ -42,26 +44,22 @@ export function UpscaleDialog({
 }: UpscaleDialogProps) {
   const [upscaleScale, setUpscaleScale] = useState(4)
   const [upscaleModel, setUpscaleModel] = useState('realesrgan-x4')
-  const [modelDownloaded, setModelDownloaded] = useState(false)
-  const [modelSize, setModelSize] = useState<number | null>(null)
-  const [isDownloading, setIsDownloading] = useState(false)
+
+  const isDownloading = useValue('isDownloadingUpscale')
+  const modelDownloaded = useCell('model_downloads', upscaleModel, 'downloaded')
+  const downloadProgress = useValue('upscaleDownloadProgress')
+
+  const markDownloaded = useSetRowCallback(
+    'model_downloads',
+    (name: string) => name,
+    () => ({ downloaded: true }),
+    []
+  )
 
   const selectedImages = useMemo(
     () => images.filter((img) => imageIds.includes(img.id)),
     [images, imageIds]
   )
-
-  const checkModelStatus = useCallback(async () => {
-    try {
-      const status = await getModelStatus(upscaleModel)
-      setModelDownloaded(status.downloaded)
-      setModelSize(status.size ?? null)
-    } catch (err) {
-      logError(`Failed to check model status: ${err}`)
-      setModelDownloaded(false)
-      setModelSize(null)
-    }
-  }, [upscaleModel])
 
   const loadUpscaleSettings = useCallback(async () => {
     try {
@@ -73,30 +71,20 @@ export function UpscaleDialog({
     }
   }, [])
 
-  // Load settings once when dialog opens
   useEffect(() => {
     if (open) {
       loadUpscaleSettings()
     }
   }, [open, loadUpscaleSettings])
 
-  // Check model status when dialog opens or model changes
-  useEffect(() => {
-    if (open && upscaleModel) {
-      checkModelStatus()
-    }
-  }, [open, upscaleModel, checkModelStatus])
-
   const handleDownloadModel = async () => {
-    setIsDownloading(true)
     try {
       await downloadModel(upscaleModel)
+      markDownloaded(upscaleModel)
       await saveUpscaleSettings(upscaleModel)
-      setModelDownloaded(true)
+      await addNotification({ message: `${upscaleModel} downloaded successfully`, status: 'success' })
     } catch (err) {
       logError(`Failed to download model: ${err}`)
-    } finally {
-      setIsDownloading(false)
     }
   }
 
@@ -127,25 +115,24 @@ export function UpscaleDialog({
                   {modelDownloaded ? 'Downloaded' : 'Not Downloaded'}
                 </span>
                 <span className="text-muted-foreground text-xs">
-                  {modelDownloaded && modelSize
-                    ? formatBytes(modelSize)
-                    : formatBytes(MODEL_SIZES[upscaleModel] || 0)}
+                  {formatBytes(MODEL_SIZES[upscaleModel] || 0)}
                 </span>
               </div>
             </div>
-            {!modelDownloaded && (
+            {isDownloading && (
+              <div className="flex items-center gap-2">
+                <Progress value={downloadProgress} className="w-20" />
+                <span className="text-xs">{downloadProgress}%</span>
+              </div>
+            )}
+            {!modelDownloaded && !isDownloading && (
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handleDownloadModel}
-                disabled={isDownloading}
               >
-                {isDownloading ? (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Download className="mr-1.5 h-3.5 w-3.5" />
-                )}
-                <span className="text-xs">{isDownloading ? 'Downloading...' : 'Download'}</span>
+                <Download className="mr-1.5 h-3.5 w-3.5" />
+                <span className="text-xs">Download</span>
               </Button>
             )}
           </div>
