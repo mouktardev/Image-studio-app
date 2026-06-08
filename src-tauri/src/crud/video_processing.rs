@@ -1077,6 +1077,75 @@ pub async fn get_all_videos(
 }
 
 #[tauri::command]
+pub async fn get_video_by_id(
+    id: i64,
+    state: State<'_, DbState>,
+) -> Result<Video, String> {
+    let pool = &state.0;
+
+    let row = sqlx::query_as::<_, (
+        i64, String, String, Option<String>, Option<i64>,
+        Option<i64>, Option<i64>, Option<f64>, Option<f64>, Option<String>,
+    )>(
+        "SELECT id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path
+         FROM videos WHERE id = ?"
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Video not found".to_string())?;
+
+    let (id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path) = row;
+
+    let bg_row = sqlx::query_as::<_, (String, Option<i64>, String)>(
+        "SELECT filepath, size, model_used FROM bg_removed_videos WHERE original_id = ?"
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (bg_removed_filepath, bg_removed_size, bg_removed_model) = match bg_row {
+        Some((fp, sz, model)) => (Some(fp), sz, Some(model)),
+        None => (None, None, None),
+    };
+
+    let comp_row = sqlx::query_as::<_, (String, Option<i64>)>(
+        "SELECT filepath, size FROM compressed_videos WHERE original_id = ?"
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let (compressed_filepath, compressed_size) = match comp_row {
+        Some((fp, sz)) => (Some(fp), sz),
+        None => (None, None),
+    };
+
+    let conv_rows = sqlx::query_as::<_, (String, Option<i64>, String)>(
+        "SELECT filepath, size, format FROM converted_videos WHERE original_id = ? ORDER BY id DESC"
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let converted_videos: Vec<ConvertedVideo> = conv_rows
+        .into_iter()
+        .map(|(fp, sz, fmt)| ConvertedVideo { filepath: fp, size: sz, format: fmt })
+        .collect();
+
+    Ok(Video {
+        id, filename, filepath, mimetype, size, width, height, duration, fps, thumbnail_path,
+        bg_removed_filepath, bg_removed_size, bg_removed_model,
+        compressed_filepath, compressed_size,
+        converted_videos,
+    })
+}
+
+#[tauri::command]
 pub async fn delete_videos_by_ids(
     state: State<'_, DbState>,
     ids: Vec<i64>,

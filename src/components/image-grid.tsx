@@ -29,6 +29,7 @@ import {
   Info,
   Minimize2,
   Repeat2,
+  ImageIcon,
 } from 'lucide-react'
 import { useRow } from '@/schema/tinybase-schema'
 import { ImageCompare } from '@/components/image-compare'
@@ -45,6 +46,7 @@ interface ImageGridProps {
   onUpscaleClick?: (ids: number[]) => void
   onBgRemovalClick?: (ids: number[]) => void
   onConvertClick?: (ids: number[]) => void
+  onImageOpen?: (id: number) => void
 }
 
 const ImageGridItem = memo(function ImageGridItem({
@@ -58,6 +60,7 @@ const ImageGridItem = memo(function ImageGridItem({
   onUpscaleClick,
   onBgRemovalClick,
   onConvertClick,
+  onImageOpen,
 }: {
   image: Image
   isSelected: boolean
@@ -69,6 +72,7 @@ const ImageGridItem = memo(function ImageGridItem({
   onUpscaleClick?: (ids: number[]) => void
   onBgRemovalClick?: (ids: number[]) => void
   onConvertClick?: (ids: number[]) => void
+  onImageOpen?: (id: number) => void
 }) {
   const [imageError, setImageError] = useState(false)
   const compressingState = useRow('compressions', image.id.toString())
@@ -161,27 +165,21 @@ const ImageGridItem = memo(function ImageGridItem({
     }
   }, [image.bg_removed_filepath])
 
-  const handleOpenConverted = useCallback(
-    async (filepath: string) => {
-      try {
-        await openFile(filepath)
-      } catch (err) {
-        logError(`Failed to open converted file: ${err}`)
-      }
-    },
-    []
-  )
+  const handleOpenConverted = useCallback(async (filepath: string) => {
+    try {
+      await openFile(filepath)
+    } catch (err) {
+      logError(`Failed to open converted file: ${err}`)
+    }
+  }, [])
 
-  const handleRevealConverted = useCallback(
-    async (filepath: string) => {
-      try {
-        await revealInExplorer(filepath)
-      } catch (err) {
-        logError(`Failed to reveal converted file: ${err}`)
-      }
-    },
-    []
-  )
+  const handleRevealConverted = useCallback(async (filepath: string) => {
+    try {
+      await revealInExplorer(filepath)
+    } catch (err) {
+      logError(`Failed to reveal converted file: ${err}`)
+    }
+  }, [])
 
   const handleClick = useCallback(
     (e: React.MouseEvent) => onSelect(image.id, e),
@@ -192,6 +190,10 @@ const ImageGridItem = memo(function ImageGridItem({
     (e: React.KeyboardEvent) => onKeyDown(image.id, e),
     [image.id, onKeyDown]
   )
+
+  const handleDoubleClick = useCallback(() => {
+    onImageOpen?.(image.id)
+  }, [image.id, onImageOpen])
 
   return (
     <ContextMenu>
@@ -204,6 +206,7 @@ const ImageGridItem = memo(function ImageGridItem({
           }`}
           onClick={handleClick}
           onKeyDown={handleKeyDownLocal}
+          onDoubleClick={handleDoubleClick}
         >
           <div
             className="relative aspect-4/3 w-full overflow-hidden"
@@ -308,8 +311,12 @@ const ImageGridItem = memo(function ImageGridItem({
                       )}
                       {image.converted_images.map((ci) => (
                         <div key={ci.format} className="flex items-center justify-between gap-2">
-                          <span className="text-orange-600">Converted ({ci.format.toUpperCase()}):</span>
-                          <span className="font-medium">{ci.size != null ? formatBytes(ci.size) : 'Unknown'}</span>
+                          <span className="text-orange-600">
+                            Converted ({ci.format.toUpperCase()}):
+                          </span>
+                          <span className="font-medium">
+                            {ci.size != null ? formatBytes(ci.size) : 'Unknown'}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -361,6 +368,12 @@ const ImageGridItem = memo(function ImageGridItem({
           <FolderSearch className="mr-2 h-4 w-4" />
           Reveal Original
         </ContextMenuItem>
+        {onImageOpen && (
+          <ContextMenuItem onClick={() => onImageOpen(image.id)}>
+            <ImageIcon className="mr-2 h-4 w-4" />
+            Open in Editor
+          </ContextMenuItem>
+        )}
 
         {(onCompressClick || onUpscaleClick || onBgRemovalClick || onConvertClick) && (
           <>
@@ -476,7 +489,8 @@ const ImageGridItem = memo(function ImageGridItem({
                         key={ci.format}
                         onClick={() => handleOpenConverted(ci.filepath)}
                       >
-                        {ci.format.toUpperCase()} {ci.size != null ? `(${formatBytes(ci.size)})` : ''}
+                        {ci.format.toUpperCase()}{' '}
+                        {ci.size != null ? `(${formatBytes(ci.size)})` : ''}
                       </ContextMenuItem>
                     ))}
                   </ContextMenuSubContent>
@@ -504,7 +518,7 @@ const ImageGridItem = memo(function ImageGridItem({
         <ContextMenuSeparator />
         <ContextMenuItem onClick={handleDelete} className="text-red-500">
           <Trash2 className="mr-2 h-4 w-4" />
-          Delete
+          Remove
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -522,6 +536,7 @@ export function ImageGrid({
   onUpscaleClick,
   onBgRemovalClick,
   onConvertClick,
+  onImageOpen,
 }: ImageGridProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [compareImage, setCompareImage] = useState<Image | null>(null)
@@ -620,6 +635,7 @@ export function ImageGrid({
               onUpscaleClick={onUpscaleClick}
               onBgRemovalClick={onBgRemovalClick}
               onConvertClick={onConvertClick}
+              onImageOpen={onImageOpen}
             />
           ))}
         </div>

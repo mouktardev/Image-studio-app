@@ -18,6 +18,7 @@ import {
   downloadBgRemovalModel,
   checkFfmpegStatus,
   downloadFfmpeg,
+  openExternalUrl,
 } from '@/lib/tauri'
 import { error as logError } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
@@ -158,7 +159,10 @@ function SettingsPage() {
   useEffect(() => {
     initModel({ name: 'realesrgan-x2', downloaded: loaderData.modelStatusX2?.downloaded ?? false })
     initModel({ name: 'realesrgan-x4', downloaded: loaderData.modelStatusX4?.downloaded ?? false })
-    initModel({ name: 'bria-rmbg-1.4', downloaded: loaderData.bgRemovalStatus?.downloaded ?? false })
+    initModel({
+      name: 'bria-rmbg-1.4',
+      downloaded: loaderData.bgRemovalStatus?.downloaded ?? false,
+    })
     setInitFfmpeg()
   }, [loaderData, initModel, setInitFfmpeg])
 
@@ -219,22 +223,32 @@ function SettingsPage() {
       <div className="mx-auto max-w-2xl px-3 py-8">
         <h1 className="mb-6 text-3xl font-bold">Settings</h1>
 
+        <Card className="mb-6 p-4">
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="mb-0">Support Development</CardTitle>
+            <Button
+              variant="outline"
+              className="shrink-0"
+              onClick={async () => {
+                try {
+                  await openExternalUrl('https://mouktar.com/donate')
+                } catch (e) {
+                  logError(`Failed to open donate: ${e}`)
+                }
+              }}
+            >
+              Support
+            </Button>
+          </div>
+        </Card>
+
         {/* Database Status */}
         <Card>
           <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Database Status</CardTitle>
-                <CardDescription>
-                  Manage your SQLite database and check for orphaned files
-                </CardDescription>
-              </div>
-              {isInitialized !== null && (
-                <Badge variant={isInitialized ? 'default' : 'destructive'}>
-                  {isInitialized ? 'Initialized' : 'Not Initialized'}
-                </Badge>
-              )}
-            </div>
+            <CardTitle>Database Status</CardTitle>
+            <CardDescription>
+              Manage your SQLite database and check for orphaned files
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {!isInitialized && (

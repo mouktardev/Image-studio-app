@@ -35,23 +35,29 @@ export function ConversionListener() {
   )
 
   useEffect(() => {
-    const unlistenImageProgress = listen<ConversionProgress>('image-conversion-progress', (event) => {
-      const { id, progress, message } = event.payload
-      if (progress === 100 || progress === 0) {
-        delImageConversion({ id, progress: 0, message: '' })
-      } else {
-        setImageConversion({ id, progress, message })
+    const unlistenImageProgress = listen<ConversionProgress>(
+      'image-conversion-progress',
+      (event) => {
+        const { id, progress, message } = event.payload
+        if (progress === 100 || progress === 0) {
+          delImageConversion({ id, progress: 0, message: '' })
+        } else {
+          setImageConversion({ id, progress, message })
+        }
       }
-    })
+    )
 
-    const unlistenVideoProgress = listen<ConversionProgress>('video-conversion-progress', (event) => {
-      const { id, progress, message } = event.payload
-      if (progress === 100 || progress === 0) {
-        delVideoConversion({ id, progress: 0, message: '' })
-      } else {
-        setVideoConversion({ id, progress, message })
+    const unlistenVideoProgress = listen<ConversionProgress>(
+      'video-conversion-progress',
+      (event) => {
+        const { id, progress, message } = event.payload
+        if (progress === 100 || progress === 0) {
+          delVideoConversion({ id, progress: 0, message: '' })
+        } else {
+          setVideoConversion({ id, progress, message })
+        }
       }
-    })
+    )
 
     const unlistenImagesUpdated = listen('images-updated', () => {
       router.invalidate()

@@ -18,7 +18,10 @@ export function DbSyncButton() {
     try {
       const deletedCount = await syncDatabase()
       if (deletedCount > 0) {
-        await addNotification({ message: `Cleaned up ${deletedCount} orphaned records.`, status: 'success' })
+        await addNotification({
+          message: `Cleaned up ${deletedCount} orphaned records.`,
+          status: 'success',
+        })
       } else {
         await addNotification({ message: 'Database is in sync.', status: 'info' })
       }

@@ -82,7 +82,10 @@ export function UpscaleDialog({
       await downloadModel(upscaleModel)
       markDownloaded(upscaleModel)
       await saveUpscaleSettings(upscaleModel)
-      await addNotification({ message: `${upscaleModel} downloaded successfully`, status: 'success' })
+      await addNotification({
+        message: `${upscaleModel} downloaded successfully`,
+        status: 'success',
+      })
     } catch (err) {
       logError(`Failed to download model: ${err}`)
     }
@@ -126,11 +129,7 @@ export function UpscaleDialog({
               </div>
             )}
             {!modelDownloaded && !isDownloading && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleDownloadModel}
-              >
+              <Button size="sm" variant="outline" onClick={handleDownloadModel}>
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 <span className="text-xs">Download</span>
               </Button>

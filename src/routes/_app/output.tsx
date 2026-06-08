@@ -433,31 +433,29 @@ function OutputPage() {
         thumbnailPath: video.thumbnail_path,
       }))
 
-    const convertedImagesList: OutputImage[] = loaderData.convertedImages
-      .flatMap((img) =>
-        img.converted_images.map((ci) => ({
-          id: img.id,
-          filename: `${img.filename} (${ci.format.toUpperCase()})`,
-          filepath: ci.filepath,
-          resultType: 'converted_images' as const,
-          displayFilepath: ci.filepath,
-          displaySize: ci.size ?? null,
-        }))
-      )
+    const convertedImagesList: OutputImage[] = loaderData.convertedImages.flatMap((img) =>
+      img.converted_images.map((ci) => ({
+        id: img.id,
+        filename: `${img.filename} (${ci.format.toUpperCase()})`,
+        filepath: ci.filepath,
+        resultType: 'converted_images' as const,
+        displayFilepath: ci.filepath,
+        displaySize: ci.size ?? null,
+      }))
+    )
 
-    const convertedVideosList: OutputImage[] = loaderData.convertedVideos
-      .flatMap((video) =>
-        video.converted_videos.map((cv) => ({
-          id: video.id,
-          filename: `${video.filename} (${cv.format.toUpperCase()})`,
-          filepath: cv.filepath,
-          resultType: 'converted_videos' as const,
-          displayFilepath: cv.filepath,
-          displaySize: cv.size ?? null,
-          isVideo: true,
-          thumbnailPath: video.thumbnail_path,
-        }))
-      )
+    const convertedVideosList: OutputImage[] = loaderData.convertedVideos.flatMap((video) =>
+      video.converted_videos.map((cv) => ({
+        id: video.id,
+        filename: `${video.filename} (${cv.format.toUpperCase()})`,
+        filepath: cv.filepath,
+        resultType: 'converted_videos' as const,
+        displayFilepath: cv.filepath,
+        displaySize: cv.size ?? null,
+        isVideo: true,
+        thumbnailPath: video.thumbnail_path,
+      }))
+    )
 
     let allImages: OutputImage[]
     if (outputType === 'all') {

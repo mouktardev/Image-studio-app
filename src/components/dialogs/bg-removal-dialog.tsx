@@ -100,11 +100,7 @@ export function BgRemovalDialog({
               </div>
             )}
             {!modelDownloaded && !isDownloading && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleDownloadModel}
-              >
+              <Button size="sm" variant="outline" onClick={handleDownloadModel}>
                 <Download className="mr-1.5 h-3.5 w-3.5" />
                 <span className="text-xs">Download</span>
               </Button>

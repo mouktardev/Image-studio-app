@@ -502,6 +502,71 @@ pub async fn delete_images_by_ids(ids: Vec<i64>, state: State<'_, DbState>) -> R
 }
 
 #[tauri::command]
+pub async fn get_image_by_id(
+    id: i64,
+    state: State<'_, DbState>,
+) -> Result<Image, String> {
+    let pool = &state.0;
+
+    let row = sqlx::query_as::<_, (i64, String, String, Option<String>, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<i64>, String, Option<String>, Option<i64>)>(
+        "SELECT 
+            i.id, i.filename, i.filepath, i.mimetype, i.size, i.width, i.height,
+            ci.filepath as compressed_filepath, ci.size as compressed_size,
+            COALESCE(json_group_array(
+                json_object(
+                    'scale', u.scale_factor,
+                    'filepath', u.filepath,
+                    'size', u.size,
+                    'model', u.model_used
+                )
+            ), '[]') as upscaled_versions,
+            bi.filepath as bg_removed_filepath, bi.size as bg_removed_size
+         FROM images i
+         LEFT JOIN compressed_images ci ON ci.original_id = i.id
+         LEFT JOIN upscaled_images u ON u.original_id = i.id
+         LEFT JOIN bg_removed_images bi ON bi.original_id = i.id
+         WHERE i.id = ?
+         GROUP BY i.id"
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| e.to_string())?
+    .ok_or_else(|| "Image not found".to_string())?;
+
+    let (id, filename, filepath, mimetype, size, width, height, compressed_filepath, compressed_size, upscaled_versions, bg_removed_filepath, bg_removed_size) = row;
+
+    let conv_rows = sqlx::query_as::<_, (String, Option<i64>, String)>(
+        "SELECT filepath, size, format FROM converted_images WHERE original_id = ? ORDER BY id DESC"
+    )
+    .bind(id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| e.to_string())?;
+
+    let converted_images: Vec<ConvertedImage> = conv_rows
+        .into_iter()
+        .map(|(fp, sz, fmt)| ConvertedImage { filepath: fp, size: sz, format: fmt })
+        .collect();
+
+    Ok(Image {
+        id,
+        filename,
+        filepath,
+        mimetype,
+        size,
+        width,
+        height,
+        compressed_filepath,
+        compressed_size,
+        upscaled_versions,
+        bg_removed_filepath,
+        bg_removed_size,
+        converted_images,
+    })
+}
+
+#[tauri::command]
 pub async fn get_image_metadata(filepath: String) -> Result<ImageMetadata, String> {
     let path = PathBuf::from(&filepath);
     let canonical_path = canonicalize(&path)

@@ -11,9 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
-import { Route as AppVideosRouteImport } from './routes/_app/videos'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppOutputRouteImport } from './routes/_app/output'
+import { Route as AppVideosIndexRouteImport } from './routes/_app/videos/index'
+import { Route as AppImageIdIndexRouteImport } from './routes/_app/$imageId/index'
+import { Route as AppVideosVideoIdIndexRouteImport } from './routes/_app/videos/$videoId/index'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -22,11 +24,6 @@ const AppRoute = AppRouteImport.update({
 const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => AppRoute,
-} as any)
-const AppVideosRoute = AppVideosRouteImport.update({
-  id: '/videos',
-  path: '/videos',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -39,39 +36,74 @@ const AppOutputRoute = AppOutputRouteImport.update({
   path: '/output',
   getParentRoute: () => AppRoute,
 } as any)
+const AppVideosIndexRoute = AppVideosIndexRouteImport.update({
+  id: '/videos/',
+  path: '/videos/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImageIdIndexRoute = AppImageIdIndexRouteImport.update({
+  id: '/$imageId/',
+  path: '/$imageId/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppVideosVideoIdIndexRoute = AppVideosVideoIdIndexRouteImport.update({
+  id: '/videos/$videoId/',
+  path: '/videos/$videoId/',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/output': typeof AppOutputRoute
   '/settings': typeof AppSettingsRoute
-  '/videos': typeof AppVideosRoute
+  '/$imageId/': typeof AppImageIdIndexRoute
+  '/videos/': typeof AppVideosIndexRoute
+  '/videos/$videoId/': typeof AppVideosVideoIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/output': typeof AppOutputRoute
   '/settings': typeof AppSettingsRoute
-  '/videos': typeof AppVideosRoute
   '/': typeof AppIndexRoute
+  '/$imageId': typeof AppImageIdIndexRoute
+  '/videos': typeof AppVideosIndexRoute
+  '/videos/$videoId': typeof AppVideosVideoIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_app/output': typeof AppOutputRoute
   '/_app/settings': typeof AppSettingsRoute
-  '/_app/videos': typeof AppVideosRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/$imageId/': typeof AppImageIdIndexRoute
+  '/_app/videos/': typeof AppVideosIndexRoute
+  '/_app/videos/$videoId/': typeof AppVideosVideoIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/output' | '/settings' | '/videos'
+  fullPaths:
+    | '/'
+    | '/output'
+    | '/settings'
+    | '/$imageId/'
+    | '/videos/'
+    | '/videos/$videoId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/output' | '/settings' | '/videos' | '/'
+  to:
+    | '/output'
+    | '/settings'
+    | '/'
+    | '/$imageId'
+    | '/videos'
+    | '/videos/$videoId'
   id:
     | '__root__'
     | '/_app'
     | '/_app/output'
     | '/_app/settings'
-    | '/_app/videos'
     | '/_app/'
+    | '/_app/$imageId/'
+    | '/_app/videos/'
+    | '/_app/videos/$videoId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -94,13 +126,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/videos': {
-      id: '/_app/videos'
-      path: '/videos'
-      fullPath: '/videos'
-      preLoaderRoute: typeof AppVideosRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -115,21 +140,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOutputRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/videos/': {
+      id: '/_app/videos/'
+      path: '/videos'
+      fullPath: '/videos/'
+      preLoaderRoute: typeof AppVideosIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/$imageId/': {
+      id: '/_app/$imageId/'
+      path: '/$imageId'
+      fullPath: '/$imageId/'
+      preLoaderRoute: typeof AppImageIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/videos/$videoId/': {
+      id: '/_app/videos/$videoId/'
+      path: '/videos/$videoId'
+      fullPath: '/videos/$videoId/'
+      preLoaderRoute: typeof AppVideosVideoIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppOutputRoute: typeof AppOutputRoute
   AppSettingsRoute: typeof AppSettingsRoute
-  AppVideosRoute: typeof AppVideosRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppImageIdIndexRoute: typeof AppImageIdIndexRoute
+  AppVideosIndexRoute: typeof AppVideosIndexRoute
+  AppVideosVideoIdIndexRoute: typeof AppVideosVideoIdIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppOutputRoute: AppOutputRoute,
   AppSettingsRoute: AppSettingsRoute,
-  AppVideosRoute: AppVideosRoute,
   AppIndexRoute: AppIndexRoute,
+  AppImageIdIndexRoute: AppImageIdIndexRoute,
+  AppVideosIndexRoute: AppVideosIndexRoute,
+  AppVideosVideoIdIndexRoute: AppVideosVideoIdIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

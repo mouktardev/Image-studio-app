@@ -48,14 +48,9 @@ export function ConvertFormatDialog({
   onConfirm,
   isVideo,
 }: ConvertFormatDialogProps) {
-  const [selectedFormat, setSelectedFormat] = useState(
-    isVideo ? 'mp4' : 'jpg'
-  )
+  const [selectedFormat, setSelectedFormat] = useState(isVideo ? 'mp4' : 'jpg')
 
-  const selectedItems = useMemo(
-    () => items.filter((item) => ids.includes(item.id)),
-    [items, ids]
-  )
+  const selectedItems = useMemo(() => items.filter((item) => ids.includes(item.id)), [items, ids])
 
   const formats = isVideo ? VIDEO_FORMATS : IMAGE_FORMATS
 
@@ -68,7 +63,9 @@ export function ConvertFormatDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Convert {ids.length} {isVideo ? 'video(s)' : 'image(s)'}</DialogTitle>
+          <DialogTitle>
+            Convert {ids.length} {isVideo ? 'video(s)' : 'image(s)'}
+          </DialogTitle>
           <DialogDescription>
             Convert to a different format. A converted copy will be created.
           </DialogDescription>

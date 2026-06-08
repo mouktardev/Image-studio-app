@@ -4,7 +4,7 @@ mod crud;
 use db::{get_db_url, init_db, get_setting as db_get_setting, set_setting as db_set_setting};
 use tauri_plugin_log::{Target, TargetKind};
 
-use crud::images::{get_all_images, get_all_compressed_images, get_all_converted_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, get_image_metadata};
+use crud::images::{get_all_images, get_all_compressed_images, get_all_converted_images, add_image, import_images_bulk, delete_image, delete_images_by_ids, get_image_metadata, get_image_by_id};
 use crud::db_maintenance::{sync_database, check_db_health};
 use crud::notifications::{get_all_notifications, add_notification, mark_notification_read, delete_notification, mark_all_notifications_read, clear_all_notifications};
 use crud::selections::{get_selections, set_selections, add_selection, remove_selection, clear_selections};
@@ -19,7 +19,7 @@ use crud::background_removal::{
     download_bg_removal_model
 };
 use crud::video_processing::{
-    import_videos, get_all_videos, delete_videos_by_ids, remove_video_bg,
+    import_videos, get_all_videos, get_video_by_id, delete_videos_by_ids, remove_video_bg,
     get_all_bg_removed_videos, get_all_compressed_videos, get_all_converted_videos,
     check_ffmpeg_status, download_ffmpeg,
     cancel_video_bg_removal, compress_videos_by_ids, convert_videos_by_ids,
@@ -149,6 +149,7 @@ pub fn run() {
             compress_images_by_ids,
             convert_images_by_ids,
             get_all_converted_images,
+            get_image_by_id,
             upscale_images_by_ids,
             get_all_upscaled_images,
             get_model_status,
@@ -161,6 +162,7 @@ pub fn run() {
             download_bg_removal_model,
             import_videos,
             get_all_videos,
+            get_video_by_id,
             delete_videos_by_ids,
             remove_video_bg,
             get_all_bg_removed_videos,

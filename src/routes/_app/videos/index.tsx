@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
 import { useValue } from '@/schema/tinybase-schema'
 import {
@@ -42,7 +42,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Download, Loader2 } from 'lucide-react'
 
-export const Route = createFileRoute('/_app/videos')({
+export const Route = createFileRoute('/_app/videos/')({
   beforeLoad: async () => {
     const filters = await getFilters('videos')
     const presets = await getCompressionPresets()
@@ -60,6 +60,19 @@ export const Route = createFileRoute('/_app/videos')({
 
 function VideosPage() {
   const loaderData = Route.useLoaderData()
+  const navigate = useNavigate()
+
+  const handleVideoOpen = useCallback(
+    (id: number) => {
+      navigate({
+        to: '/videos/$videoId',
+        params: { videoId: id.toString() },
+        search: { view: 'original' },
+        viewTransition: { types: ['slide-left'] },
+      })
+    },
+    [navigate]
+  )
 
   const [videos, setVideos] = useState<Video[]>(loaderData.videos)
   const [selectedIds, setSelectedIds] = useState<number[]>(loaderData.selectedIds)
@@ -435,6 +448,7 @@ function VideosPage() {
           }}
           onImport={handleImport}
           onDrop={handleDrop}
+          onVideoOpen={handleVideoOpen}
         />
       </div>
 

@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
 import { open } from '@tauri-apps/plugin-dialog'
-import { revealItemInDir, openPath } from '@tauri-apps/plugin-opener'
+import { revealItemInDir, openPath, openUrl } from '@tauri-apps/plugin-opener'
 
 export interface UpscaledVersion {
   scale: number
@@ -73,6 +73,10 @@ export async function revealInExplorer(path: string): Promise<void> {
 
 export async function openFile(path: string): Promise<void> {
   return openPath(path)
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  return openUrl(url)
 }
 
 export async function selectFolder(): Promise<string | null> {
@@ -274,6 +278,10 @@ export async function importVideos(paths: string[]): Promise<VideoImportResult> 
   return invoke<VideoImportResult>('import_videos', { paths })
 }
 
+export async function getVideoById(id: number): Promise<Video> {
+  return invoke<Video>('get_video_by_id', { id })
+}
+
 export async function getAllVideos(params?: VideoQueryParams): Promise<Video[]> {
   return invoke<Video[]>('get_all_videos', { params: params ?? null })
 }
@@ -360,7 +368,14 @@ export interface FilterState {
   search_query: string
   sort_field: 'name' | 'size' | 'date'
   sort_order: 'asc' | 'desc'
-  output_type: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed' | 'converted_images' | 'converted_videos'
+  output_type:
+    | 'all'
+    | 'compressed'
+    | 'upscaled'
+    | 'bg_removed'
+    | 'video_compressed'
+    | 'converted_images'
+    | 'converted_videos'
 }
 
 export interface UpdateFilterRequest {
@@ -368,7 +383,14 @@ export interface UpdateFilterRequest {
   search_query?: string
   sort_field?: 'name' | 'size' | 'date'
   sort_order?: 'asc' | 'desc'
-  output_type?: 'all' | 'compressed' | 'upscaled' | 'bg_removed' | 'video_compressed' | 'converted_images' | 'converted_videos'
+  output_type?:
+    | 'all'
+    | 'compressed'
+    | 'upscaled'
+    | 'bg_removed'
+    | 'video_compressed'
+    | 'converted_images'
+    | 'converted_videos'
 }
 
 export interface ImageQueryParams {
@@ -381,6 +403,10 @@ export interface VideoQueryParams {
   search?: string
   sort_field: 'name' | 'size' | 'date'
   sort_order: 'asc' | 'desc'
+}
+
+export async function getImageById(id: number): Promise<Image> {
+  return invoke<Image>('get_image_by_id', { id })
 }
 
 export async function getFilters(page: string): Promise<FilterState> {

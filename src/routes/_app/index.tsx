@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
 import { Loader2 } from 'lucide-react'
 import { ImageGrid } from '@/components/image-grid'
@@ -91,6 +91,19 @@ function IndexPage() {
   }, [])
 
   const setDbNeedsSync = useSetValueCallback('dbNeedsSync', () => true)
+  const navigate = useNavigate()
+
+  const handleImageOpen = useCallback(
+    (id: number) => {
+      navigate({
+        to: '/$imageId',
+        params: { imageId: id.toString() },
+        search: { view: 'original' },
+        viewTransition: { types: ['slide-left'] },
+      })
+    },
+    [navigate]
+  )
 
   // Dialog state
   const [activeDialog, setActiveDialog] = useState<
@@ -403,6 +416,7 @@ function IndexPage() {
         onUpscaleClick={openUpscaleDialog}
         onBgRemovalClick={openBgRemovalDialog}
         onConvertClick={openConvertDialog}
+        onImageOpen={handleImageOpen}
       />
 
       {/* Dialogs */}

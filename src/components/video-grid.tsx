@@ -14,7 +14,16 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { Progress } from '@/components/ui/progress'
-import { Play, Trash2, ExternalLink, FolderSearch, Minimize2, Info, Upload, Repeat2 } from 'lucide-react'
+import {
+  Play,
+  Trash2,
+  ExternalLink,
+  FolderSearch,
+  Minimize2,
+  Info,
+  Upload,
+  Repeat2,
+} from 'lucide-react'
 import { formatBytes } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { useRow } from '@/schema/tinybase-schema'
@@ -29,6 +38,7 @@ interface VideoGridProps {
   onConvertClick?: (ids: number[]) => void
   onImport?: () => void
   onDrop?: (files: string[]) => void
+  onVideoOpen?: (id: number) => void
 }
 
 const VideoGridItem = memo(function VideoGridItem({
@@ -39,6 +49,7 @@ const VideoGridItem = memo(function VideoGridItem({
   onDelete,
   onCompressClick,
   onConvertClick,
+  onVideoOpen,
 }: {
   video: Video
   isSelected: boolean
@@ -47,6 +58,7 @@ const VideoGridItem = memo(function VideoGridItem({
   onDelete: (id: number) => void
   onCompressClick?: (ids: number[]) => void
   onConvertClick?: (ids: number[]) => void
+  onVideoOpen?: (id: number) => void
 }) {
   const bgRemovalState = useRow('video_bg_removals', video.id.toString())
   const compressionState = useRow('video_compressions', video.id.toString())
@@ -63,6 +75,10 @@ const VideoGridItem = memo(function VideoGridItem({
     (e: React.KeyboardEvent) => onKeyDown(video.id, e),
     [video.id, onKeyDown]
   )
+
+  const handleDoubleClick = useCallback(() => {
+    onVideoOpen?.(video.id)
+  }, [video.id, onVideoOpen])
 
   const isProcessing =
     bgRemovalState?.progress != null && bgRemovalState.progress > 0 && bgRemovalState.progress < 100
@@ -130,6 +146,7 @@ const VideoGridItem = memo(function VideoGridItem({
           }`}
           onClick={handleClick}
           onKeyDown={handleKeyDown}
+          onDoubleClick={handleDoubleClick}
           aria-label={video.filename}
         >
           <div
@@ -169,7 +186,9 @@ const VideoGridItem = memo(function VideoGridItem({
                 )}
               </div>
 
-              {(video.compressed_filepath || video.bg_removed_filepath || video.converted_videos.length > 0) && (
+              {(video.compressed_filepath ||
+                video.bg_removed_filepath ||
+                video.converted_videos.length > 0) && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70">
@@ -192,8 +211,12 @@ const VideoGridItem = memo(function VideoGridItem({
                       )}
                       {video.converted_videos.map((cv) => (
                         <div key={cv.format} className="flex items-center justify-between gap-2">
-                          <span className="text-orange-600">Converted ({cv.format.toUpperCase()}):</span>
-                          <span className="font-medium">{cv.size != null ? formatBytes(cv.size) : 'Unknown'}</span>
+                          <span className="text-orange-600">
+                            Converted ({cv.format.toUpperCase()}):
+                          </span>
+                          <span className="font-medium">
+                            {cv.size != null ? formatBytes(cv.size) : 'Unknown'}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -320,11 +343,10 @@ const VideoGridItem = memo(function VideoGridItem({
                 {video.converted_videos.map((cv) => (
                   <ContextMenuItem
                     key={cv.format}
-                    onClick={() =>
-                      openFile(cv.filepath).catch((e) => logError(`Failed: ${e}`))
-                    }
+                    onClick={() => openFile(cv.filepath).catch((e) => logError(`Failed: ${e}`))}
                   >
-                    <ExternalLink className="mr-2 h-4 w-4" /> {cv.format.toUpperCase()} ({cv.size != null ? formatBytes(cv.size) : 'Unknown'})
+                    <ExternalLink className="mr-2 h-4 w-4" /> {cv.format.toUpperCase()} (
+                    {cv.size != null ? formatBytes(cv.size) : 'Unknown'})
                   </ContextMenuItem>
                 ))}
               </ContextMenuSubContent>
@@ -361,7 +383,7 @@ const VideoGridItem = memo(function VideoGridItem({
         )}
         <ContextMenuSeparator />
         <ContextMenuItem className="text-destructive" onClick={() => onDelete(video.id)}>
-          <Trash2 className="mr-2 h-4 w-4" /> Delete
+          <Trash2 className="mr-2 h-4 w-4" /> Remove
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>
@@ -377,6 +399,7 @@ export function VideoGrid({
   onConvertClick,
   onImport,
   onDrop,
+  onVideoOpen,
 }: VideoGridProps) {
   const [isDragging, setIsDragging] = useState(false)
 
@@ -485,6 +508,7 @@ export function VideoGrid({
           onDelete={onDelete}
           onCompressClick={onCompressClick}
           onConvertClick={onConvertClick}
+          onVideoOpen={onVideoOpen}
         />
       ))}
     </div>
