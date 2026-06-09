@@ -16,12 +16,7 @@ Open-source desktop application for image and video optimization with AI-powered
 
 ## Release
 
-- Download latest release:
-  <a href="https://github.com/mouktardev/localstudio/releases">
-  <img src="https://img.shields.io/github/v/release/mouktardev/localstudio"
-           alt="Current Version">
-  </a>
-  <a href="https://github.com/mouktardev/localstudio/releases">
+- Download latest release: [![GitHub release](https://img.shields.io/github/v/release/mouktardev/localstudio?style=flat-square)](https://github.com/mouktardev/localstudio/releases/latest)
   <img src="https://img.shields.io/badge/Windows-0078D6"
            alt="Windows Support">
   </a>
