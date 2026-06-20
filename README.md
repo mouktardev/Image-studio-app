@@ -72,3 +72,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - [ ] Add image editor.
 - [ ] Add video editor with advanced effects.
+
+### Bugs (fix)
+
+- gif upscale issue.
+- webm video player not playing.

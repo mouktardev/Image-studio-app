@@ -231,9 +231,9 @@ function SettingsPage() {
               className="shrink-0"
               onClick={async () => {
                 try {
-                  await openExternalUrl('https://mouktar.com/donate')
+                  await openExternalUrl('https://mouktar.com/sponsor')
                 } catch (e) {
-                  logError(`Failed to open donate: ${e}`)
+                  logError(`Failed to open sponsor: ${e}`)
                 }
               }}
             >

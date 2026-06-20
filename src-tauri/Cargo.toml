@@ -1,6 +1,6 @@
 [package]
 name = "localstudio"
-version = "0.2.2"
+version = "0.2.3"
 description = "an open source desktop application for for image optimization with ai tools focus on privacy for local devices"
 authors = ["Mouktar"]
 edition = "2021"
